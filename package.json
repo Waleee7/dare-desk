@@ -1,0 +1,29 @@
+{
+  "name": "dare-desk-bot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "PremiumFloor — explainable options-trading decision engine (paper-first, Robinhood Agentic MCP execution)",
+  "scripts": {
+    "go": "tsx src/run.ts",
+    "logon": "tsx src/run.ts",
+    "stop": "node -e \"require('fs').mkdirSync('data',{recursive:true});require('fs').writeFileSync('data/STOP','')\"",
+    "demo": "tsx src/demo.ts",
+    "scan": "tsx src/scanDemo.ts",
+    "webhook": "tsx src/server/webhook.ts",
+    "start": "tsx src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.104.2",
+    "dotenv": "^17.4.2",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^25.9.3",
+    "tsx": "^4.22.4",
+    "typescript": "^6.0.3",
+    "vitest": "^4.1.9"
+  }
+}
