@@ -1,8 +1,9 @@
 // Component 3 — Strategy Edge Governor. Weights the six lenses into a 0-100
 // total, caps it into an EARNED confidence %, and assigns a grade.
-// SIGNAL >= 85% (fires) · WATCH 65-84% (observe) · REJECT < 65%. No-trade is final.
-// One honest number: confidence can't exceed what real confluence backs, so 85%
-// only shows when market regime (and more) actually agree — never technicals alone.
+// A+ >= 92% (lean in) · SIGNAL >= 80% (fires) · WATCH 65-79% (observe) · REJECT < 65%.
+// One honest number: confidence can't exceed what real confluence backs, so the top
+// of the range only shows when market regime (and more) actually agree — never
+// technicals alone. A+ specifically requires regime + news/MTF confluence.
 
 import type {
   TradeIdea, FactorScore, FactorName, ScoreBreakdown, GovernorDecision, Grade,
@@ -73,6 +74,7 @@ function earnedConfidence(
 }
 
 function gradeFor(confidence: number): Grade {
+  if (confidence >= GRADE_THRESHOLDS.APLUS) return 'A+';
   if (confidence >= GRADE_THRESHOLDS.SIGNAL) return 'SIGNAL';
   if (confidence >= GRADE_THRESHOLDS.WATCH) return 'WATCH';
   return 'REJECT';
@@ -96,8 +98,9 @@ function explain(
   if (confidence < total - 1) {
     reasons.push(`Confidence held to ${confidence}% (raw ${total}) — not enough confluence backing it (regime/news/MTF).`);
   }
-  if (grade === 'SIGNAL') reasons.push('≥85% earned confidence — fires as a signal.');
-  if (grade === 'REJECT') reasons.push('Below 65% — no-trade, respected downstream.');
+  if (grade === 'A+') reasons.push(`≥${GRADE_THRESHOLDS.APLUS}% earned confidence — A+, lean in.`);
+  if (grade === 'SIGNAL') reasons.push(`≥${GRADE_THRESHOLDS.SIGNAL}% earned confidence — fires as a signal.`);
+  if (grade === 'REJECT') reasons.push(`Below ${GRADE_THRESHOLDS.WATCH}% — no-trade, respected downstream.`);
   return reasons;
 }
 

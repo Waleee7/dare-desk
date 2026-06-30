@@ -5,9 +5,10 @@
 // object + plain text.
 
 import type {
-  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, AlertStatus, MarketContext,
+  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, AlertStatus, MarketContext, ExitPlan,
 } from '../lib/types.js';
 import { config } from '../lib/config.js';
+import { deriveExitPlan } from '../engine/exitPlan.js';
 
 export function buildAlert(
   idea: TradeIdea,
@@ -19,6 +20,7 @@ export function buildAlert(
   const contractStyle = deriveContractStyle(idea);
   const tradeLength = deriveTradeLength(idea);
   const newsContext = deriveNewsContext(ctx);
+  const exitPlan = deriveExitPlan(idea, fw);
   const choppy = isChoppy(ctx, decision);
 
   if (!fw.approved || decision.grade === 'REJECT') {
@@ -32,7 +34,7 @@ export function buildAlert(
       `Confidence: ${decision.confidence}% (raw ${decision.total}/100) · ${gradeLabel(decision.grade)}`,
       `What needs to change: ${whatWouldFix(fw, decision)}`,
     ].filter(Boolean).join('\n');
-    return base(idea, decision, fw, 'rejection', 'rejected', text, { contractStyle, tradeLength, newsContext });
+    return base(idea, decision, fw, 'rejection', 'rejected', text, { contractStyle, tradeLength, newsContext, exitPlan });
   }
 
   const status: AlertStatus = decision.grade === 'WATCH'
@@ -51,6 +53,7 @@ export function buildAlert(
     `Stop: ${fmt(fw.stop)}`,
     `Targets: ${fw.targets.map(fmt).join(' / ') || '—'}`,
     `Trade length: ${tradeLength}`,
+    ...exitLines(exitPlan),
     `Timeframes: ${mtfLine(idea)}`,
     `Confidence: ${decision.confidence}%  ·  ${gradeLabel(decision.grade)}`,
     `Size: ${fw.positionContracts} contract(s) · max risk $${fw.maxLossUsd}${fw.rewardRisk != null ? ` · R:R ${fw.rewardRisk.toFixed(2)}` : ''}`,
@@ -63,10 +66,23 @@ export function buildAlert(
     `Status: ${statusLabel(status)}`,
   ].join('\n');
 
-  return base(idea, decision, fw, 'alert', status, text, { contractStyle, tradeLength, newsContext });
+  return base(idea, decision, fw, 'alert', status, text, { contractStyle, tradeLength, newsContext, exitPlan });
 }
 
-interface Derived { contractStyle: string; tradeLength: string; newsContext: string; }
+interface Derived { contractStyle: string; tradeLength: string; newsContext: string; exitPlan: ExitPlan; }
+
+/** Render the Exit Brain as the human-facing block in the alert text. */
+function exitLines(ep: ExitPlan): string[] {
+  if (!ep.takeProfits.length) return [`⏱ Exit window: ${ep.holdWindow}`, `🛑 ${ep.invalidation}`];
+  const lines = [`⏱ Exit window: ${ep.holdWindow}`];
+  for (const tp of ep.takeProfits) {
+    lines.push(`🎯 ${tp.label}: ${signed(tp.premiumPct)} premium (~$${tp.premium}${tp.underlying != null ? ` @ ${tp.underlying}` : ''}) — ${tp.action}`);
+  }
+  lines.push(`🛑 ${ep.stop.label}: ${signed(ep.stop.premiumPct)} (~$${ep.stop.premium}) — ${ep.invalidation}`);
+  lines.push(`🏃 Runner: ${ep.runnerTrigger}`);
+  return lines;
+}
+const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}%`;
 
 function base(
   idea: TradeIdea, decision: GovernorDecision, fw: FirewallResult,
@@ -78,6 +94,7 @@ function base(
     confidence: decision.confidence, grade: decision.grade,
     why: decision.reasons, risk: riskLine(fw), status, text,
     contractStyle: d.contractStyle, tradeLength: d.tradeLength, newsContext: d.newsContext,
+    exitPlan: d.exitPlan,
   };
 }
 
@@ -87,20 +104,21 @@ function base(
 // 1m-only → 0DTE scalp · +5m → weekly day-trade · +15m → farther-out swing.
 export function deriveContractStyle(idea: TradeIdea): string {
   const tfs = idea.mtf?.timeframes.join('+') || 'single-TF';
+  const dte = idea.contract.dte;
   switch (idea.timeframe) {
-    case 'scalp': return `0DTE / same-day — fast read (${tfs}); pure speed/gamma`;
-    case 'swing': return `Farther-out 2–4 wk — ${tfs} confirm, give it room`;
+    case 'scalp': return `0DTE same-day — pure gamma scalp (${tfs})`;
+    case 'swing': return `${dte ?? 7}DTE — multi-day, ${tfs} confirm, room to breathe`;
     case 'intraday':
-    default: return `Weekly — ${tfs} aligned, cuts theta & IV-crush`;
+    default: return `${dte ?? 3}DTE — day-to-few-days, ${tfs} aligned, cuts theta`;
   }
 }
 
 export function deriveTradeLength(idea: TradeIdea): string {
   switch (idea.timeframe) {
-    case 'scalp': return 'Quick scalp · minutes';
-    case 'swing': return 'Swing · hours to days';
+    case 'scalp': return 'Quick scalp · 5–15 min';
+    case 'swing': return 'Swing · hours to ~2 days';
     case 'intraday':
-    default: return 'Day trade · 5–30 min';
+    default: return 'Day trade · 30–90 min';
   }
 }
 
@@ -124,7 +142,7 @@ function isChoppy(ctx: MarketContext, decision: GovernorDecision): boolean {
 const fgLabel = (n: number) => (n < 25 ? 'extreme fear' : n < 45 ? 'fear' : n < 55 ? 'neutral' : n < 75 ? 'greed' : 'extreme greed');
 const fmt = (n: number | null | undefined) => (n == null ? '—' : String(n));
 const gradeLabel = (g: string) =>
-  g === 'SIGNAL' ? '🚨 SIGNAL' : g === 'WATCH' ? '👀 WATCHING' : 'PASS';
+  g === 'A+' ? '🔥 A+ SIGNAL' : g === 'SIGNAL' ? '🚨 SIGNAL' : g === 'WATCH' ? '👀 WATCHING' : 'PASS';
 
 function statusLabel(s: AlertStatus): string {
   switch (s) {

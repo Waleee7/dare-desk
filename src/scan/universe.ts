@@ -17,6 +17,15 @@ export const SCAN_UNIVERSE = [
 const INDEX_ETFS = new Set<string>(['SPY', 'QQQ', 'IWM', 'DIA', 'SMH']);
 export const isIndex = (symbol: string): boolean => INDEX_ETFS.has(symbol);
 
+// Momentum/gamma names — high-IV movers Josh actually scalps 0DTE (TSLA his bread
+// and butter). These get the 0DTE momentum-continuation detector + a strength bump
+// so a clean rip gets promoted aggressively, and they scan first each pass.
+const MOMENTUM = new Set<string>(['TSLA', 'NVDA', 'AMD', 'META', 'MU', 'AVGO', 'SMH', 'NFLX']);
+export const isMomentum = (symbol: string): boolean => MOMENTUM.has(symbol);
+
+// Indices first (the franchise), then momentum movers, then the rest.
 export function fullUniverse(): string[] {
-  return [...PRIORITY, ...SCAN_UNIVERSE];
+  const rest = SCAN_UNIVERSE.filter((s) => !isMomentum(s));
+  const movers = SCAN_UNIVERSE.filter((s) => isMomentum(s));
+  return [...PRIORITY, ...movers, ...rest];
 }

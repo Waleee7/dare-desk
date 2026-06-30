@@ -18,6 +18,7 @@ export interface Contract {
   optionType: OptionType;
   strike: number;
   expiry: string; // YYYY-MM-DD
+  dte?: number; // days to expiry (0 = same-day) — set by the contract selector
   // Optional chain detail (filled by a market-data provider in Phase 2):
   bid?: number;
   ask?: number;
@@ -88,7 +89,9 @@ export interface ScoreBreakdown {
   confluenceCount: number; // how many factors materially agree (>=60)
 }
 
-export type Grade = 'SIGNAL' | 'WATCH' | 'REJECT';
+// A+ = highest-conviction (>=92 earned confidence): fires loud, leans in.
+// SIGNAL = fires (>=80). WATCH = observe (65-79). REJECT = no-trade (<65).
+export type Grade = 'A+' | 'SIGNAL' | 'WATCH' | 'REJECT';
 
 export interface GovernorDecision {
   grade: Grade;
@@ -118,6 +121,28 @@ export interface DayState {
   cooldownUntil: number | null; // epoch ms
 }
 
+/** One premium-based exit level (what you actually trade — the contract, not the stock). */
+export interface PremiumExit {
+  label: string; // 'TP1 · base hit' | 'TP2 · runner' | 'Stop'
+  premium: number; // estimated option premium at this level ($/share)
+  premiumPct: number; // % change in premium from entry (+15, +40, -25)
+  underlying: number | null; // the underlying price this corresponds to
+  action: string; // 'Sell half, lock it in' | 'Trail the rest' | 'Cut it — thesis dead'
+}
+
+/** The Exit Brain output — every signal carries one. Answers: how long do I hold,
+ *  where do I take profit (in premium %), what makes me bail, when is it just dead. */
+export interface ExitPlan {
+  style: 'scalp' | 'runner' | 'swing'; // the personality of THIS trade
+  holdWindow: string; // human-readable: 'Out in ~5–15 min' / '30–90 min, flat by EOD'
+  timeStopMin: number; // hard time-stop in minutes (0 = manage by level, no clock)
+  takeProfits: PremiumExit[]; // TP1 base-hit, TP2 runner
+  stop: PremiumExit; // premium-based stop
+  trail: string; // what to do after TP1 hits
+  runnerTrigger: string; // what justifies holding for the +big runner (breakout/volume)
+  invalidation: string; // the level/condition that kills the trade NOW
+}
+
 export type AlertStatus = 'watch' | 'paper' | 'approval' | 'live-disabled' | 'rejected';
 
 export interface PremiumFloorAlert {
@@ -135,9 +160,10 @@ export interface PremiumFloorAlert {
   risk: string;
   status: AlertStatus;
   // Stage 1 additions — contract guidance + context surfaced in the alert.
-  contractStyle: string; // e.g. "0DTE (same-day)" / "Weekly" / "Farther-out 2–4wk"
+  contractStyle: string; // e.g. "0DTE (same-day)" / "3DTE" / "7DTE"
   tradeLength: string; // e.g. "Quick scalp · minutes" / "5–30 min" / "Hours to days"
   newsContext: string; // regime + event/earnings + top headline
+  exitPlan: ExitPlan; // Exit Brain: hold window, premium-based TPs, stop, invalidation
   text: string; // rendered, Discord-ready
 }
 

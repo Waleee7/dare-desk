@@ -4,9 +4,10 @@
 // for the decision engine to score. SPY/QQQ are always scanned.
 
 import type { MarketDataProvider } from '../data/provider.js';
-import type { TradeIdea, OptionType, Timeframe } from '../lib/types.js';
+import type { TradeIdea, OptionType } from '../lib/types.js';
 import { analyzeMtf, type MtfResult } from './mtf.js';
 import { fullUniverse } from './universe.js';
+import { selectStrike, dteFor, expiryForDte, estPremium } from './contracts.js';
 import { last, pctChange } from './indicators.js';
 
 export class Scanner {
@@ -47,42 +48,17 @@ function toIdea(symbol: string, m: MtfResult): TradeIdea {
     contract: {
       ticker: symbol,
       optionType,
-      strike: atmStrike(m.price),
-      expiry: nearestExpiry(m.horizon),
+      strike: selectStrike(symbol, m.price, optionType, m.horizon),
+      expiry: expiryForDte(dteFor(m.horizon)),
+      dte: dteFor(m.horizon),
     },
     entry: round(sig.entry),
     stop: round(sig.stop),
     targets: sig.targets,
-    premium: estPremium(m.price, m.horizon),
+    premium: estPremium(symbol, m.price, m.horizon),
     notes: sig.rationale,
     mtf: { timeframes: m.timeframes, agreement: m.agreement, conflict: m.conflict },
   };
 }
 
 const round = (n: number) => Math.round(n * 100) / 100;
-const atmStrike = (price: number) => Math.round(price); // $1 increments for liquid names
-
-function estPremium(price: number, tf: Timeframe): number {
-  // Plausible ATM premium until a real options chain is wired (Phase 2).
-  const factor = tf === 'scalp' ? 0.004 : tf === 'intraday' ? 0.009 : 0.025;
-  return round(price * factor);
-}
-
-function nearestExpiry(tf: Timeframe): string {
-  const d = new Date();
-  if (tf === 'scalp') return iso(d); // 0DTE
-  if (tf === 'intraday') return iso(nextFriday(d));
-  const swing = new Date(d);
-  swing.setDate(swing.getDate() + 21);
-  return iso(swing);
-}
-
-function nextFriday(from: Date): Date {
-  const d = new Date(from);
-  const day = d.getDay(); // 0 Sun .. 6 Sat
-  const add = (5 - day + 7) % 7 || 7; // next Friday (at least 1 day out)
-  d.setDate(d.getDate() + add);
-  return d;
-}
-
-const iso = (d: Date) => d.toISOString().slice(0, 10);

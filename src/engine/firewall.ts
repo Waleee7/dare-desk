@@ -29,15 +29,17 @@ export function runFirewall(
   const rr = rewardRisk(idea);
   if (rr != null && rr < r.minRewardRisk) blocks.push(`reward_risk ${rr.toFixed(2)} < ${r.minRewardRisk}`);
 
-  if (decision.breakdown.factors.regime.score < r.minRegimeScore) {
-    blocks.push(`regime_score ${decision.breakdown.factors.regime.score} < ${r.minRegimeScore}`);
-  }
+  // Event risk stays a HARD block — capital protection (Josh didn't opt into
+  // event-day scalping). Regime + thin-confluence are SOFTENED to warnings below so
+  // the "signal as many as it wants ≥80%" mandate isn't muzzled by discipline gates.
   if (flags.has('event_risk') || flags.has('earnings_event_risk') || flags.has('macro_event')) {
     blocks.push('event_risk_blackout');
   }
-  if (decision.breakdown.confluenceCount < 2) blocks.push('single_factor_confidence');
-
-  if (day.tradesToday >= r.maxTradesPerDay) blocks.push(`overtrading (${day.tradesToday}/${r.maxTradesPerDay})`);
+  // Trade-count cap is OFF by default (maxTradesPerDay=0 → unlimited). The daily-loss
+  // + loss-streak cooldown brakes below still cap real capital at risk.
+  if (r.maxTradesPerDay > 0 && day.tradesToday >= r.maxTradesPerDay) {
+    blocks.push(`overtrading (${day.tradesToday}/${r.maxTradesPerDay})`);
+  }
 
   const maxDailyLoss = (r.maxDailyLossPct / 100) * r.accountSizeUsd;
   if (day.realizedPnlUsd <= -maxDailyLoss) blocks.push(`max_daily_loss hit (${day.realizedPnlUsd.toFixed(0)} <= -${maxDailyLoss.toFixed(0)})`);
@@ -52,6 +54,10 @@ export function runFirewall(
   if (flags.has('thin_oi')) warnings.push('thin open interest');
   if (idea.mtf?.conflict) warnings.push('timeframe conflict — intervals disagree');
   if (decision.grade === 'WATCH') warnings.push('WATCH grade — observe, not a fire');
+  if (decision.breakdown.factors.regime.score < r.minRegimeScore) {
+    warnings.push(`weak regime (${decision.breakdown.factors.regime.score}/${r.minRegimeScore}) — size down`);
+  }
+  if (decision.breakdown.confluenceCount < 2) warnings.push('thin confluence — one lens carrying it');
 
   // --- Position sizing (only meaningful if approved) ---
   const { positionContracts, maxLossUsd } = sizePosition(idea);

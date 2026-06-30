@@ -18,7 +18,10 @@ export const config = {
     accountSizeUsd: num(process.env.ACCOUNT_SIZE_USD, 10_000),
     maxRiskPerTradePct: num(process.env.MAX_RISK_PER_TRADE_PCT, 1),
     maxDailyLossPct: num(process.env.MAX_DAILY_LOSS_PCT, 3),
-    maxTradesPerDay: num(process.env.MAX_TRADES_PER_DAY, 5),
+    // 0 = unlimited signals (Josh's call: "signal as many as it wants"). The
+    // daily-LOSS circuit breaker + loss-streak cooldown still protect the account;
+    // this only governs the *count*, not capital at risk. Set >0 to cap again.
+    maxTradesPerDay: num(process.env.MAX_TRADES_PER_DAY, 0),
     maxConsecutiveLosses: num(process.env.MAX_CONSECUTIVE_LOSSES, 2),
     cooldownMinutes: num(process.env.COOLDOWN_MINUTES, 45),
     minRewardRisk: num(process.env.MIN_REWARD_RISK, 1.5),
@@ -59,10 +62,11 @@ export const WEIGHTS: Record<FactorName, number> = {
 };
 
 /** Governor grade thresholds (on the EARNED confidence %, 0-100).
- *  SIGNAL = the only tier that fires to Discord (A+ and ALERT merged into one). */
+ *  A+ and SIGNAL both fire to the signals channel; A+ is the lean-in tier. */
 export const GRADE_THRESHOLDS = {
-  SIGNAL: 85, // 🚨 fires — earned confidence must clear 85%
-  WATCH: 65,  // 👀 watch channel / dashboard only
+  APLUS: num(process.env.GRADE_APLUS, 92),  // 🔥 highest conviction — lean in
+  SIGNAL: num(process.env.GRADE_SIGNAL, 80), // 🚨 fires — earned confidence must clear 80%
+  WATCH: num(process.env.GRADE_WATCH, 65),  // 👀 watch channel / dashboard only
 } as const;
 
 export const hasLLM = (): boolean => config.anthropicApiKey.length > 0;

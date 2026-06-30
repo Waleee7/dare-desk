@@ -22,6 +22,7 @@ export interface SetupSignal {
 
 export interface DetectOpts {
   isIndex?: boolean; // index ETF → level-based plays get a specialist bump
+  isMomentum?: boolean; // high-IV mover (TSLA/NVDA…) → momentum/breakout plays bumped
 }
 
 const RR_T1 = 1.6; // first target at ~1.6R
@@ -65,10 +66,12 @@ export function detectSetups(intraday: Bar[], daily: Bar[], refReturnPct: number
   const lastBar = last(intraday)!;
   const surge = volumeSurge(intraday);
 
-  // Conviction modifiers: index ETFs respect levels; a volume surge confirms.
+  // Conviction modifiers: index ETFs respect levels; momentum names get a bump on
+  // trend plays; a volume surge confirms anything.
   const idxBump = opts.isIndex ? 0.05 : 0;
+  const momBump = opts.isMomentum ? 0.05 : 0;
   const volBump = surge ? 0.06 : 0;
-  const lift = (base: number) => Math.min(0.95, base + idxBump + volBump);
+  const lift = (base: number) => Math.min(0.95, base + idxBump + momBump + volBump);
   const vtag = surge ? ' on a volume surge' : '';
 
   // Prior-day levels (from daily bars) — the lines indices pivot around.
@@ -161,6 +164,22 @@ export function detectSetups(intraday: Bar[], daily: Bar[], refReturnPct: number
     } else if (price < vw && price < ma && pulledToVwap && price < prev) {
       out.push(withRisk(price, 'short', a * 1.2, 'VWAP rejection continuation', 'intraday', lift(0.66),
         `Downtrend popped to VWAP ${round(vw)} and rolled over${vtag}.`));
+    }
+  }
+
+  // 9) Momentum continuation (0DTE gamma scalp) — the "name is ripping, ride it"
+  // play. Price trending one way (above/below VWAP + 20MA) with a real intraday
+  // push and (ideally) volume. Tight stop, fast scalp. Josh's bread-and-butter.
+  const momRet = closes.length >= 10 ? pctChange(closes[closes.length - 10]!, price) : 0;
+  if (vw != null && ma != null) {
+    const trendUp = price > vw && price > ma && momRet > 0.25 && (r == null || (r > 52 && r < 80));
+    const trendDn = price < vw && price < ma && momRet < -0.25 && (r == null || (r < 48 && r > 20));
+    if (trendUp) {
+      out.push(withRisk(price, 'long', a * 1.1, 'Momentum continuation (0DTE)', 'scalp', lift(0.7),
+        `Ripping up — above VWAP ${round(vw)} & 20MA, +${round(momRet)}% push${vtag}. Gamma scalp.`));
+    } else if (trendDn) {
+      out.push(withRisk(price, 'short', a * 1.1, 'Momentum continuation (0DTE)', 'scalp', lift(0.7),
+        `Bleeding down — below VWAP ${round(vw)} & 20MA, ${round(momRet)}% push${vtag}. Gamma scalp.`));
     }
   }
 

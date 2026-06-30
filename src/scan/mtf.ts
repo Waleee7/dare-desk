@@ -8,7 +8,7 @@
 import type { MarketDataProvider, BarTimeframe } from '../data/provider.js';
 import type { Direction, Timeframe } from '../lib/types.js';
 import { detectSetups, type SetupSignal } from './setups.js';
-import { isIndex } from './universe.js';
+import { isIndex, isMomentum } from './universe.js';
 import { last } from './indicators.js';
 
 const TFS: { label: string; tf: BarTimeframe }[] = [
@@ -36,7 +36,8 @@ export async function analyzeMtf(
     TFS.map(async (t) => ({ label: t.label, bars: await provider.getBars(symbol, t.tf, 60) })),
   );
   const idx = isIndex(symbol);
-  const perSig = per.map((p) => ({ label: p.label, bars: p.bars, sigs: detectSetups(p.bars, daily, refReturnPct, { isIndex: idx }) }));
+  const mom = isMomentum(symbol);
+  const perSig = per.map((p) => ({ label: p.label, bars: p.bars, sigs: detectSetups(p.bars, daily, refReturnPct, { isIndex: idx, isMomentum: mom }) }));
 
   // Strongest setup across all intervals = the candidate.
   let best: { label: string; sig: SetupSignal } | null = null;
