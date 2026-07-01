@@ -5,6 +5,8 @@
 
 import type { BrokerOrder, BrokerResult, BrokerMode, FirewallResult, TradeIdea } from '../lib/types.js';
 import { config } from '../lib/config.js';
+import { etTimeString } from '../lib/clock.js';
+import { applyRealisticFill } from '../backtest/index.js';
 
 export interface BrokerAdapter {
   readonly mode: BrokerMode;
@@ -24,6 +26,7 @@ export function toOrder(idea: TradeIdea, fw: FirewallResult): BrokerOrder {
     stop: fw.stop,
     targets: fw.targets,
     maxLossUsd: fw.maxLossUsd,
+    entryTimeEt: etTimeString(), // entry ticket — stamped when the order is built
   };
 }
 
@@ -34,11 +37,20 @@ export class PaperBroker implements BrokerAdapter {
     if (order.contracts <= 0) {
       return { accepted: false, mode: this.mode, message: 'Zero-size order (sizing produced 0 contracts).' };
     }
+    // Realistic MODELED fill — you cross half the spread, eat slippage, pay commission.
+    const fill = applyRealisticFill(order.limitPremium, order.contracts);
+    const sym = `${order.strike}${order.optionType[0]!.toUpperCase()}`;
     return {
       accepted: true,
       mode: this.mode,
       orderId: `paper-${order.ideaId}`,
-      message: `PAPER fill: ${order.contracts}x ${order.ticker} ${order.strike}${order.optionType[0]!.toUpperCase()} @ ${order.limitPremium ?? 'mkt'} (max risk $${order.maxLossUsd}).`,
+      fillPremium: fill.fillPremium,
+      costPerContractUsd: fill.costPerContractUsd,
+      costPaidUsd: fill.costPaidUsd,
+      slippageUsd: fill.slippageUsd,
+      message: `PAPER fill (modeled) @ ${order.entryTimeEt}: ${order.contracts}x ${order.ticker} ${sym} @ $${fill.fillPremium} `
+        + `(mid ${order.limitPremium ?? 'mkt'}, +$${fill.slippageUsd} spread/slippage/comm) · cost $${fill.costPaidUsd} · `
+        + `max risk $${order.maxLossUsd}. Estimate — no live chain.`,
     };
   }
 }

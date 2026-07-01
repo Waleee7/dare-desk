@@ -1,10 +1,10 @@
 ---
 name: market-regime-sentinel
-description: Score overall market conditions before allowing options alerts. Use when the bot evaluates SPY, QQQ, indexes, VIX, yields, breadth, economic events, fear/greed, or whether today is call-friendly, put-friendly, choppy, or no-trade.
+description: Superseded — use market-regime-brain. Kept as a redirect so old references resolve.
 ---
 
-# Market Regime Sentinel
+# Market Regime Sentinel → superseded
 
-## Mission
-Prevent good-looking setups from firing during hostile market conditions.
+This skill has been folded into **`market-regime-brain`**, which classifies the day's regime and sets the confidence multiplier for the whole pipeline.
 
+➡ Use **market-regime-brain**.

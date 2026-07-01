@@ -6,7 +6,7 @@
 import type { MarketDataProvider } from '../data/provider.js';
 import type { TradeIdea, OptionType } from '../lib/types.js';
 import { analyzeMtf, type MtfResult } from './mtf.js';
-import { fullUniverse } from './universe.js';
+import { fullUniverse, tierOf } from './universe.js';
 import { selectStrike, dteFor, expiryForDte, estPremium } from './contracts.js';
 import { last, pctChange } from './indicators.js';
 
@@ -16,15 +16,16 @@ export class Scanner {
     private readonly universe: string[] = fullUniverse(),
   ) {}
 
-  /** One scan pass → one (best) multi-timeframe candidate per symbol. */
-  async scanOnce(strengthFloor = 0.5): Promise<TradeIdea[]> {
+  /** One scan pass → one (best) multi-timeframe candidate per symbol. `vix` (from
+   *  the live market context) drives VIX-adaptive strike/DTE/premium selection. */
+  async scanOnce(strengthFloor = 0.5, vix?: number): Promise<TradeIdea[]> {
     const refReturn = await this.spyReturn();
     const ideas: TradeIdea[] = [];
 
     for (const symbol of this.universe) {
       const m = await analyzeMtf(this.provider, symbol, refReturn);
       if (!m || m.primary.strength < strengthFloor) continue;
-      ideas.push(toIdea(symbol, m));
+      ideas.push(toIdea(symbol, m, vix));
     }
     return ideas;
   }
@@ -36,26 +37,28 @@ export class Scanner {
   }
 }
 
-function toIdea(symbol: string, m: MtfResult): TradeIdea {
+function toIdea(symbol: string, m: MtfResult, vix?: number): TradeIdea {
   const sig = m.primary;
   const optionType: OptionType = sig.direction === 'long' ? 'call' : 'put';
+  const horizon = m.horizon;
   return {
     alertId: `scan-${symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     ticker: symbol,
     direction: sig.direction,
     setup: sig.setup,
-    timeframe: m.horizon,
+    timeframe: horizon,
+    tier: tierOf(symbol),
     contract: {
       ticker: symbol,
       optionType,
-      strike: selectStrike(symbol, m.price, optionType, m.horizon),
-      expiry: expiryForDte(dteFor(m.horizon)),
-      dte: dteFor(m.horizon),
+      strike: selectStrike(symbol, m.price, optionType, horizon, vix),
+      expiry: expiryForDte(dteFor(horizon, vix)),
+      dte: dteFor(horizon, vix),
     },
     entry: round(sig.entry),
     stop: round(sig.stop),
     targets: sig.targets,
-    premium: estPremium(symbol, m.price, m.horizon),
+    premium: estPremium(symbol, m.price, horizon, vix),
     notes: sig.rationale,
     mtf: { timeframes: m.timeframes, agreement: m.agreement, conflict: m.conflict },
   };

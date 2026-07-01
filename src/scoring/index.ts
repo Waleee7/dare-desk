@@ -5,6 +5,8 @@
 import { z } from 'zod';
 import type { TradeIdea, MarketContext, FactorScore, FactorName } from '../lib/types.js';
 import { structuredCall } from '../lib/llm.js';
+import { makeOptionsProvider } from '../options/index.js';
+import type { ChainSnapshot } from '../options/provider.js';
 
 const ScoreSchema = z.object({
   score: z.number().min(0).max(100),
@@ -145,7 +147,7 @@ without an event strategy = penalty. Inflated IV from a known event = warn. Outp
 }
 
 // ---- 5. Options Chain Sniper ----------------------------------------------
-export function scoreOptionsChain(idea: TradeIdea, _ctx: MarketContext): Promise<FactorScore> {
+export function scoreOptionsChain(idea: TradeIdea, _ctx: MarketContext, chain?: ChainSnapshot | null): Promise<FactorScore> {
   const system = `Score the OPTIONS CONTRACT quality for execution, 0-100.
 Reward tight bid/ask, real volume + open interest, responsive delta, and an expiration that fits the setup.
 A good stock setup with a trash contract is still a bad trade. Output {score, rationale, flags}.`;
@@ -153,8 +155,20 @@ A good stock setup with a trash contract is still a bad trade. Output {score, ra
     const c = idea.contract;
     const flags: string[] = [];
     if (c.bid == null || c.ask == null) {
-      // No paid options feed yet → can't verify the contract. Stay NEUTRAL (don't
-      // punish the trade for a disclosed data gap); flag it so it's transparent.
+      if (chain) {
+        // Whale-flow degraded mode: a FREE/DELAYED chain (no real-time sweep tape).
+        // SOFT context only — bounded ±, flagged 'chain_delayed' so the governor counts
+        // it modestly but never treats it as full confirmation (see earnedConfidence).
+        let s = 68;
+        const wantCalls = idea.direction === 'long';
+        const agrees = (wantCalls && chain.netFlowBias === 'bullish') || (!wantCalls && chain.netFlowBias === 'bearish');
+        const against = (wantCalls && chain.netFlowBias === 'bearish') || (!wantCalls && chain.netFlowBias === 'bullish');
+        if (agrees) s += 10; else if (against) s -= 10;
+        if (chain.unusualStrikes.length) s += 4;
+        flags.push('chain_delayed');
+        return { score: Math.max(0, Math.min(100, s)), rationale: `Delayed chain (${chain.note}): flow ${chain.netFlowBias}, ${chain.unusualStrikes.length} unusual strike(s). Soft context — no real-time sweep tape.`, flags };
+      }
+      // No chain at all → can't verify. Stay NEUTRAL (don't punish a disclosed gap).
       flags.push('chain_unverified');
       return { score: 68, rationale: 'Heuristic: contract quality unverified (no live chain feed) — neutral, not counted against the trade.', flags };
     }
@@ -198,12 +212,15 @@ export async function scoreAll(
   idea: TradeIdea,
   ctx: MarketContext,
 ): Promise<Record<FactorName, FactorScore>> {
+  // Whale-flow: pull a FREE/DELAYED options snapshot (never throws → null on any
+  // failure/rate-limit) so the chain lens has soft flow context when available.
+  const chain = await makeOptionsProvider().snapshot(idea.ticker).catch(() => null);
   const [technical, joshLens, regime, news, optionsChain, riskReward] = await Promise.all([
     scoreTechnical(idea, ctx),
     scoreJoshLens(idea, ctx),
     scoreRegime(idea, ctx),
     scoreNews(idea, ctx),
-    scoreOptionsChain(idea, ctx),
+    scoreOptionsChain(idea, ctx, chain),
     scoreRiskReward(idea, ctx),
   ]);
   return { technical, joshLens, regime, news, optionsChain, riskReward };

@@ -26,16 +26,23 @@ const tidy = (n: number) => Math.round(n * 100) / 100;
  * actual style (he bought the 395C/397.5C OTM and the OTM one ran +42%). Intraday
  * and swing sit ATM for delta + a friendlier fill.
  */
-export function selectStrike(ticker: string, price: number, type: OptionType, horizon: Timeframe): number {
+export function selectStrike(ticker: string, price: number, type: OptionType, horizon: Timeframe, vix?: number): number {
   const step = strikeIncrement(ticker);
   const atm = roundTo(price, step);
   if (horizon !== 'scalp') return atm;
-  // one increment out-of-the-money for the scalp
-  return type === 'call' ? atm + step : atm - step;
+  // Elevated VIX → reach one extra increment OTM (cheaper high-gamma scalp; the
+  // wider expected range makes a further strike reachable).
+  const otmSteps = vix != null && vix >= 22 ? 2 : 1;
+  return type === 'call' ? atm + step * otmSteps : atm - step * otmSteps;
 }
 
 // --- DTE ladder: 0 (scalp) / 3 (intraday) / 7 (swing) --------------------------
-export const dteFor = (horizon: Timeframe): number => (horizon === 'scalp' ? 0 : horizon === 'intraday' ? 3 : 7);
+// High VIX shortens holds — swings resolve faster and long theta is expensive.
+export const dteFor = (horizon: Timeframe, vix?: number): number => {
+  const base = horizon === 'scalp' ? 0 : horizon === 'intraday' ? 3 : 7;
+  if (vix != null && vix >= 25 && base > 2) return base - 2;
+  return base;
+};
 
 /** Calendar DTE → an actual expiry date, rolled off weekends to a trading day. */
 export function expiryForDte(dte: number, from = new Date()): string {
@@ -62,12 +69,14 @@ const PREMIUM_FACTOR: Record<IvClass, Record<Timeframe, number>> = {
   low: { scalp: 0.0040, intraday: 0.0080, swing: 0.0140 },
 };
 
-/** Estimated ATM option premium ($/share) for the name + horizon. */
-export function estPremium(ticker: string, price: number, horizon: Timeframe): number {
+/** Estimated ATM option premium ($/share) for the name + horizon. MODELED — scales
+ *  with VIX (premium richens as implied vol rises; baseline VIX≈16). */
+export function estPremium(ticker: string, price: number, horizon: Timeframe, vix?: number): number {
   const f = PREMIUM_FACTOR[ivClass(ticker)][horizon];
   // a slightly-OTM scalp is a touch cheaper than ATM
   const otmDiscount = horizon === 'scalp' ? 0.82 : 1;
-  return Math.max(0.05, tidy(price * f * otmDiscount));
+  const vixMult = vix != null ? Math.min(1.6, Math.max(0.7, vix / 16)) : 1;
+  return Math.max(0.05, tidy(price * f * otmDiscount * vixMult));
 }
 
 /** Estimated option delta (magnitude) for the chosen contract. */

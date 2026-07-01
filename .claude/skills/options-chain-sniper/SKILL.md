@@ -1,10 +1,10 @@
 ---
 name: options-chain-sniper
-description: Evaluate options contracts for liquidity, spread, delta, expiration, IV, open interest, volume, risk/reward, and execution quality. Use before choosing or approving any options contract.
+description: Superseded — use options-contract-killer. Kept as a redirect so old references resolve.
 ---
 
-# Options Chain Sniper
+# Options Chain Sniper → superseded
 
-## Mission
-A good stock setup with a trash option contract is still a bad trade.
+This skill has been folded into **`options-contract-killer`**, which owns the full contract-quality veto (volume, spread, OI, IV, expiration, strike, delta) for QQQ/SPY scalps.
 
+➡ Use **options-contract-killer**.

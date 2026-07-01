@@ -53,5 +53,16 @@ export async function analyzeMtf(
   const oneMin = perSig.find((p) => p.label === '1m')?.bars ?? [];
   const price = last(oneMin)?.c ?? best.sig.entry;
 
-  return { primary: best.sig, price, timeframes, agreement: timeframes.length, conflict, horizon };
+  // MTF conflict penalty (mtf-sniper-engine): a candidate fighting a higher-timeframe
+  // opposing setup is worth less. Reversal-style plays (sweeps/reclaims/failed breaks)
+  // are SUPPOSED to fight the prior move, so their penalty is softened. Applied ONCE,
+  // here, so the scanner's strengthFloor gate filters penalized candidates.
+  const REVERSAL = /sweep|reclaim|reject|failed|reversal|oversold|overbought/i;
+  let strength = best.sig.strength;
+  if (conflict) {
+    strength = Math.max(0, strength - (REVERSAL.test(best.sig.setup) ? 0.05 : 0.12));
+  }
+  const primary: SetupSignal = { ...best.sig, strength };
+
+  return { primary, price, timeframes, agreement: timeframes.length, conflict, horizon };
 }

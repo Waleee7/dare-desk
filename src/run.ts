@@ -20,9 +20,11 @@ import { dispatchSignal } from './discord/dispatch.js';
 import { writeState, rowFrom, dashboardMeta, type SignalRow } from './lib/state.js';
 import { fullUniverse } from './scan/universe.js';
 import { config, hasLLM } from './lib/config.js';
+import { inMarketHours, etMinutes } from './lib/clock.js';
+import { postEodRecap } from './discord/recap.js';
+import { makeCalendarProvider } from './calendar/index.js';
 
 const STOP_FILE = join(process.cwd(), 'data', 'STOP');
-const EARNINGS_SOON = new Set<string>([]); // wire an earnings-calendar feed later
 
 let stopping = false;
 const log = (m: string) => console.log(`[${new Date().toLocaleTimeString()}] ${m}`);
@@ -30,28 +32,22 @@ const log = (m: string) => console.log(`[${new Date().toLocaleTimeString()}] ${m
 process.on('SIGINT', () => { stopping = true; log('Ctrl+C — shutting down after this pass…'); });
 process.on('SIGTERM', () => { stopping = true; });
 
-/** US regular trading hours: Mon–Fri, 9:30–16:00 America/New_York. */
-function inMarketHours(now = new Date()): boolean {
-  const et = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-  const day = et.getDay();
-  if (day === 0 || day === 6) return false;
-  const mins = et.getHours() * 60 + et.getMinutes();
-  return mins >= 570 && mins < 960; // 9:30 → 16:00
-}
-
 const provider = makeProvider();
 const engine = new PremiumFloorEngine();
 const scanner = new Scanner(provider);
 
+let recapPostedDate: string | null = null;
+
 async function tick(): Promise<void> {
   const baseCtx = await buildMarketContext(provider, fullUniverse());
-  const candidates = await scanner.scanOnce();
+  const candidates = await scanner.scanOnce(0.5, baseCtx.vix); // VIX-adaptive contracts
+  const earners = await makeCalendarProvider().earningsFor(fullUniverse()); // live earnings (empty w/o key)
 
   const rows: SignalRow[] = [];
   let fired = 0;
   let watching = 0;
   for (const idea of candidates) {
-    const ctx = { ...baseCtx, earningsSoon: EARNINGS_SOON.has(idea.ticker) };
+    const ctx = { ...baseCtx, earningsSoon: earners.has(idea.ticker.toUpperCase()) };
     const res = await engine.evaluateIdea(idea, ctx);
     rows.push(rowFrom(res));
     const routed = await dispatchSignal(res);
@@ -59,6 +55,7 @@ async function tick(): Promise<void> {
     else if (routed === 'watch') watching++;
   }
 
+  const expectancy = engine.journal.expectancy();
   writeState({
     brand: config.botName,
     updatedAt: new Date().toISOString(),
@@ -69,7 +66,17 @@ async function tick(): Promise<void> {
     summary: engine.journal.summary(),
     headlines: baseCtx.headlines,
     meta: dashboardMeta(),
+    expectancy,
+    proveIt: { proven: expectancy.proven, paperTrades: expectancy.trades, needed: config.risk.minPaperTrades },
   });
+
+  // EOD auto-recap — once per day at/after the 0DTE flat-by time (~15:55 ET).
+  const today = new Date().toISOString().slice(0, 10);
+  if (etMinutes() >= config.risk.zeroDteFlatByMinEt && recapPostedDate !== today) {
+    recapPostedDate = today;
+    await postEodRecap({ date: today, botName: config.botName, summary: engine.journal.summary(), expectancy });
+    log('EOD recap posted.');
+  }
 
   log(`scan: ${candidates.length} candidates · ${fired} fired · ${watching} watching · regime SPY ${baseCtx.spyTrend}/QQQ ${baseCtx.qqqTrend} · VIX≈${baseCtx.vix} · F&G ${baseCtx.fearGreed}`);
 }

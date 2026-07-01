@@ -1,8 +1,8 @@
-// Signal dispatcher — routes a scored result to the right Discord feed:
-//   A+ / SIGNAL (≥80%) → main signals webhook (rich embed) — fires, A+ leans in
-//   WATCH       (65-79%) → "Watching" webhook (falls back to main) with watch phrasing
-//   REJECT      (<65%)  → not posted (dashboard only) — discipline: don't spam passes
-// Stage 1 of the live-assistant upgrade; Max-Power upgrade adds A+ + Exit Brain.
+// Signal dispatcher — routes a scored result to the right Discord feed by band + tier:
+//   A+ (≥90)  → main signals webhook — fires, leans in (the Extended-universe bar)
+//   A  (≥80)  → main signals webhook — fires (Core/Focus only)
+//   B  (≥70)  → "Watching" webhook (falls back to main) with watch phrasing
+//   C / D     → not posted (dashboard only) — discipline: don't spam passes
 
 import type { EvaluationResult } from '../pipeline.js';
 import type { PremiumFloorAlert } from '../lib/types.js';
@@ -16,8 +16,10 @@ export async function dispatchSignal(res: EvaluationResult): Promise<Routed> {
   const a = res.alert;
   if (a.kind === 'rejection') return 'rejected';
 
-  // A+ and SIGNAL both fire to the main signals channel (A+ is the lean-in tier).
-  if (a.grade === 'A+' || a.grade === 'SIGNAL') {
+  // Fire to the main signals channel: A+ always; A only for Core/Focus (Extended
+  // must clear A+, which the firewall already enforces upstream). B → watch feed.
+  const fires = a.grade === 'A+' || (a.grade === 'A' && a.tier !== 'extended');
+  if (fires) {
     await postToDiscord(config.discordWebhookUrl, signalContent(a), [signalEmbed(a, res)]);
     return 'signal';
   }
@@ -58,10 +60,13 @@ function signalEmbed(a: PremiumFloorAlert, res: EvaluationResult): DiscordEmbed 
     color: aplus ? COLOR.aplus : COLOR.fire,
     fields: [
       { name: 'Setup', value: a.setup, inline: true },
-      { name: 'Confidence', value: `${a.confidence}% · ${aplus ? '🔥 A+' : '🚨 SIGNAL'}`, inline: true },
+      { name: 'Confidence', value: `${a.confidence}% · ${aplus ? '🔥 A+' : '🚨 A'}`, inline: true },
       { name: 'Trade length', value: a.tradeLength, inline: true },
       { name: 'Timeframes', value: res.idea.mtf ? `${res.idea.mtf.timeframes.join('+')} (${res.idea.mtf.agreement}/3)${res.idea.mtf.conflict ? ' ⚠️' : ''}` : '—', inline: true },
       { name: 'Contract', value: `${contractStr(a)}\n${a.contractStyle}`, inline: false },
+      { name: 'Tier', value: a.tier.toUpperCase(), inline: true },
+      { name: '⏰ Entry @', value: `${a.entryTimeEt} ET · flat ${a.timeToFlat}`, inline: true },
+      { name: '💵 Cost (modeled)', value: a.costPaidUsd != null ? `$${a.costPerContractUsd}/ct · $${a.costPaidUsd}` : '—', inline: true },
       { name: 'Entry', value: fmt(a.entry), inline: true },
       { name: 'Stop', value: fmt(a.stop), inline: true },
       { name: 'Targets', value: a.targets.map(String).join(' / ') || '—', inline: true },

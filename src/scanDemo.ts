@@ -12,6 +12,7 @@ const { dispatchSignal } = await import('./discord/dispatch.js');
 const { writeState, rowFrom, dashboardMeta } = await import('./lib/state.js');
 const { config, hasLLM } = await import('./lib/config.js');
 const { fullUniverse } = await import('./scan/universe.js');
+const { makeCalendarProvider } = await import('./calendar/index.js');
 type SignalRow = import('./lib/state.js').SignalRow;
 
 // Placeholder headlines for the dashboard news bar (real news feed = next).
@@ -20,9 +21,6 @@ const HEADLINES = [
   'Semis lead; MU in focus ahead of cycle data',
   'VIX subdued — risk-on tape into the afternoon',
 ];
-
-// Tickers with earnings today/tomorrow (manual until an earnings-calendar feed).
-const EARNINGS_SOON = new Set<string>([]);
 
 const hr = (t: string) => console.log(`\n${'═'.repeat(64)}\n${t}\n${'═'.repeat(64)}`);
 
@@ -39,14 +37,15 @@ const engine = new PremiumFloorEngine();
 const baseCtx = await buildMarketContext(provider, fullUniverse());
 console.log(`Today's regime: SPY ${baseCtx.spyTrend} · QQQ ${baseCtx.qqqTrend} · VIX≈${baseCtx.vix} · breadth ${baseCtx.breadth} · Fear&Greed ${baseCtx.fearGreed}`);
 
-const candidates = await scanner.scanOnce();
+const candidates = await scanner.scanOnce(0.5, baseCtx.vix);
 hr(`SCAN PASS — ${candidates.length} candidate setup(s)`);
 
 const rows: SignalRow[] = [];
 let fired = 0;
 const headlines = baseCtx.headlines.length ? baseCtx.headlines : HEADLINES;
+const earners = await makeCalendarProvider().earningsFor(fullUniverse());
 for (const idea of candidates) {
-  const ctx = { ...baseCtx, earningsSoon: EARNINGS_SOON.has(idea.ticker) };
+  const ctx = { ...baseCtx, earningsSoon: earners.has(idea.ticker.toUpperCase()) };
   const res = await engine.evaluateIdea(idea, ctx);
   rows.push(rowFrom(res));
   const tag = `${idea.ticker} ${idea.setup} [${idea.timeframe}]`;
@@ -56,6 +55,7 @@ for (const idea of candidates) {
   else console.log(`·  pass    ${tag} → ${res.decision.grade} (${res.decision.total}): ${res.firewall.blocks[0] ?? '—'}`);
 }
 
+const expectancy = engine.journal.expectancy();
 writeState({
   brand: config.botName,
   updatedAt: new Date().toISOString(),
@@ -66,6 +66,8 @@ writeState({
   summary: engine.journal.summary(),
   headlines,
   meta: dashboardMeta(),
+  expectancy,
+  proveIt: { proven: expectancy.proven, paperTrades: expectancy.trades, needed: config.risk.minPaperTrades },
 });
 
 hr('RESULT');

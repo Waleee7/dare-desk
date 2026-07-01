@@ -1,10 +1,10 @@
 ---
 name: missed-trade-learning-lab
-description: Convert missed winning trades into structured learning records so the bot can improve future rules. Use whenever Josh says the bot missed a setup, stayed silent, or should have alerted.
+description: Superseded — use setup-dna-extractor. Kept as a redirect so old references resolve.
 ---
 
-# Missed Trade Learning Lab
+# Missed Trade Learning Lab → superseded
 
-## Mission
-Every missed trade becomes a lesson, not a complaint.
+This skill has been folded into **`setup-dna-extractor`**, which converts missed plays (and wins/losses/examples/screenshots) into repeatable rules.
 
+➡ Use **setup-dna-extractor**.

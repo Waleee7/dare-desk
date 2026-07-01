@@ -4,6 +4,8 @@
 import type { NewsItem, NewsProvider } from './provider.js';
 import { AlpacaNews } from './alpaca.js';
 import { AlphaVantageNews } from './alphavantage.js';
+import { FinnhubNews } from './finnhub.js';
+import { FMPNews } from './fmp.js';
 import { config } from '../lib/config.js';
 
 class StubNews implements NewsProvider {
@@ -16,6 +18,8 @@ function chain(): NewsProvider[] {
   const c: NewsProvider[] = [];
   if (config.alpaca.key && config.alpaca.secret) c.push(new AlpacaNews());
   if (config.alphaVantageKey) c.push(new AlphaVantageNews());
+  if (config.finnhubKey) c.push(new FinnhubNews());
+  if (config.fmpKey) c.push(new FMPNews());
   if (c.length === 0) c.push(new StubNews());
   return c;
 }

@@ -27,6 +27,16 @@ export const config = {
     minRewardRisk: num(process.env.MIN_REWARD_RISK, 1.5),
     maxSpreadPct: num(process.env.MAX_SPREAD_PCT, 8),
     minRegimeScore: num(process.env.MIN_REGIME_SCORE, 50),
+    // Universe + discipline upgrades (2026-07 build)
+    extendedMinConfidence: num(process.env.EXTENDED_MIN_CONF, 90), // Extended names need A+ (>=90)
+    chaseGuardPct: num(process.env.CHASE_GUARD_PCT, 0.4), // block if price left entry by >0.4%
+    maxCorrelatedHeat: num(process.env.MAX_CORRELATED_HEAT, 2), // max same-dir open trades per cluster
+    nameCooldownMinutes: num(process.env.NAME_COOLDOWN_MIN, 20), // per-ticker lock after a loss
+    lunchStartMinEt: num(process.env.LUNCH_START, 690), // 11:30 ET (minutes past ET midnight)
+    lunchEndMinEt: num(process.env.LUNCH_END, 810), // 13:30 ET
+    suppressLunch: (process.env.SUPPRESS_LUNCH || 'true').toLowerCase() === 'true',
+    minPaperTrades: num(process.env.MIN_PAPER_TRADES, 100), // prove-it gate sample size
+    zeroDteFlatByMinEt: num(process.env.ZERO_DTE_FLAT, 955), // 15:55 ET — be flat on 0DTE
   },
 
   liveTrading: (process.env.LIVE_TRADING || 'false').toLowerCase() === 'true',
@@ -45,6 +55,18 @@ export const config = {
   },
   // Backup verified-news feed (free). Alpaca News (Benzinga) is primary.
   alphaVantageKey: process.env.ALPHAVANTAGE_API_KEY || '',
+  // Additional free, verified sources: Finnhub (news+earnings+econ), FMP (news+calendar),
+  // FRED (official macro: yields/rates/dollar). All key-guarded + never-throw.
+  finnhubKey: process.env.FINNHUB_API_KEY || '',
+  fmpKey: process.env.FMP_API_KEY || '',
+  fredKey: process.env.FRED_API_KEY || '',
+  // SINGLE source of paper-fill assumptions (backtest + PaperBroker read this).
+  // All MODELED — no live options chain. Numbers are estimates, labeled as such.
+  fills: {
+    bidAskSpreadPct: num(process.env.FILL_SPREAD_PCT, 5), // modeled round-trip spread %
+    slippagePct: num(process.env.FILL_SLIPPAGE_PCT, 1.5), // modeled slippage %
+    commissionPerContract: num(process.env.FILL_COMMISSION, 0.65), // $/contract
+  },
 
   // Continuous runner ("go"): scan cadence + whether to run outside RTH.
   scanIntervalSec: num(process.env.SCAN_INTERVAL_SEC, 120),
@@ -63,10 +85,27 @@ export const WEIGHTS: Record<FactorName, number> = {
 
 /** Governor grade thresholds (on the EARNED confidence %, 0-100).
  *  A+ and SIGNAL both fire to the signals channel; A+ is the lean-in tier. */
+/** Governor letter-grade thresholds on EARNED confidence %. A+/A fire; B/C watch; D no-trade.
+ *  Core/Focus fire at A (>=80); Extended-universe names require A+ (>=90). */
 export const GRADE_THRESHOLDS = {
-  APLUS: num(process.env.GRADE_APLUS, 92),  // 🔥 highest conviction — lean in
-  SIGNAL: num(process.env.GRADE_SIGNAL, 80), // 🚨 fires — earned confidence must clear 80%
-  WATCH: num(process.env.GRADE_WATCH, 65),  // 👀 watch channel / dashboard only
+  APLUS: num(process.env.GRADE_APLUS, 90), // 🔥 A+ — lean in; also the Extended-universe bar
+  A: num(process.env.GRADE_A, 80),         // 🚨 A — fires (Core/Focus)
+  B: num(process.env.GRADE_B, 70),         // 👀 B — watch channel
+  C: num(process.env.GRADE_C, 60),         // 👀 C — watch/log; below = D (no-trade)
 } as const;
 
 export const hasLLM = (): boolean => config.anthropicApiKey.length > 0;
+
+/** Correlation clusters for the heat cap — QQQ/NVDA/SMH long is ONE trade, not many.
+ *  The firewall caps simultaneous same-direction exposure per cluster. */
+export const CLUSTER_OF: Record<string, string> = {
+  QQQ: 'semis-nasdaq', NVDA: 'semis-nasdaq', AMD: 'semis-nasdaq', AVGO: 'semis-nasdaq',
+  MU: 'semis-nasdaq', SMH: 'semis-nasdaq', SOXL: 'semis-nasdaq', TSM: 'semis-nasdaq',
+  AAPL: 'mega-tech', MSFT: 'mega-tech', GOOGL: 'mega-tech', GOOG: 'mega-tech',
+  AMZN: 'mega-tech', META: 'mega-tech', TSLA: 'mega-tech',
+  SPY: 'broad', DIA: 'broad', IWM: 'broad',
+};
+
+/** Cluster for a ticker (defaults to the symbol itself = its own cluster). */
+export const clusterOf = (ticker: string): string =>
+  CLUSTER_OF[ticker.toUpperCase()] ?? ticker.toUpperCase();

@@ -6,6 +6,7 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EvaluationResult } from '../pipeline.js';
 import type { JournalEntry } from '../journal/journal.js';
+import type { ExpectancyStats } from './types.js';
 import { config, hasLLM } from './config.js';
 import { newsProviderName } from '../news/index.js';
 
@@ -51,6 +52,11 @@ export interface SignalRow {
   status: string;
   fired: boolean;
   blocks: string[];
+  tier: string;
+  entryTimeEt: string;
+  costPaidUsd: number | null;
+  rMultiple: number | null; // set when the paper trade closes
+  result: string; // '' | 'win' | 'loss'
 }
 
 export interface DashboardState {
@@ -63,6 +69,8 @@ export interface DashboardState {
   summary: ReturnType<import('../journal/journal.js').TradeJournal['summary']>;
   headlines: string[];
   meta: DashboardMeta;
+  expectancy: ExpectancyStats;
+  proveIt: { proven: boolean; paperTrades: number; needed: number };
 }
 
 const STATE_PATH = join(process.cwd(), 'data', 'state.json');
@@ -86,6 +94,11 @@ export function rowFrom(r: EvaluationResult): SignalRow {
     status: r.alert.status,
     fired: r.firewall.approved,
     blocks: r.firewall.blocks,
+    tier: r.alert.tier,
+    entryTimeEt: r.alert.entryTimeEt,
+    costPaidUsd: r.alert.costPaidUsd,
+    rMultiple: null,
+    result: '',
   };
 }
 

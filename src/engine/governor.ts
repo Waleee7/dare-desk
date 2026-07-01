@@ -1,9 +1,9 @@
-// Component 3 — Strategy Edge Governor. Weights the six lenses into a 0-100
-// total, caps it into an EARNED confidence %, and assigns a grade.
-// A+ >= 92% (lean in) · SIGNAL >= 80% (fires) · WATCH 65-79% (observe) · REJECT < 65%.
-// One honest number: confidence can't exceed what real confluence backs, so the top
-// of the range only shows when market regime (and more) actually agree — never
-// technicals alone. A+ specifically requires regime + news/MTF confluence.
+// Component 3 — Signal Grade Judge (Strategy Edge Governor). Weights the six lenses
+// into a 0-100 total, caps it into an EARNED confidence %, and assigns a letter grade.
+// A+ >= 90 (lean-in; the Extended-universe bar) · A >= 80 (fires) · B >= 70 (watch) ·
+// C >= 60 (watch/log) · D < 60 (no-trade). One honest number: confidence can't exceed
+// what real confluence backs, so the top of the range only shows when market regime
+// (and more) actually agree — never technicals alone. A+ requires regime + news/MTF.
 
 import type {
   TradeIdea, FactorScore, FactorName, ScoreBreakdown, GovernorDecision, Grade,
@@ -62,12 +62,16 @@ function earnedConfidence(
   const newsAgree = factors.news.score >= AGREE;
   // Chain only "agrees" if we actually verified it — an unscoreable chain can't
   // unlock the top of the range (so missing options data caps confidence at 95).
-  const chainAgree = isScoreable(factors.optionsChain) && factors.optionsChain.score >= AGREE;
+  // A DELAYED free chain counts modestly in the weighted total but must NOT unlock the
+  // top of the range — only a real (priced) chain is full confirmation.
+  const chainAgree = isScoreable(factors.optionsChain)
+    && factors.optionsChain.score >= AGREE
+    && !factors.optionsChain.flags.includes('chain_delayed');
   const mtfStrong = !!idea.mtf && idea.mtf.agreement >= 2 && !idea.mtf.conflict;
 
-  let ceiling = 82; // clean technical setup, alone → tops out at WATCH (can't fire)
-  if (regimeAgree) ceiling = 90; // + market regime backs it → CAN reach SIGNAL
-  if (regimeAgree && (newsAgree || mtfStrong)) ceiling = 95; // + catalyst or multi-TF
+  let ceiling = 82; // clean technical setup, alone → tops out at B (can't fire)
+  if (regimeAgree) ceiling = 90; // + market regime backs it → CAN reach A (fires)
+  if (regimeAgree && (newsAgree || mtfStrong)) ceiling = 95; // + catalyst or multi-TF → A+
   if (regimeAgree && newsAgree && chainAgree) ceiling = 100; // full confluence
 
   return Math.max(0, Math.min(total, ceiling));
@@ -75,9 +79,10 @@ function earnedConfidence(
 
 function gradeFor(confidence: number): Grade {
   if (confidence >= GRADE_THRESHOLDS.APLUS) return 'A+';
-  if (confidence >= GRADE_THRESHOLDS.SIGNAL) return 'SIGNAL';
-  if (confidence >= GRADE_THRESHOLDS.WATCH) return 'WATCH';
-  return 'REJECT';
+  if (confidence >= GRADE_THRESHOLDS.A) return 'A';
+  if (confidence >= GRADE_THRESHOLDS.B) return 'B';
+  if (confidence >= GRADE_THRESHOLDS.C) return 'C';
+  return 'D';
 }
 
 function explain(
@@ -99,8 +104,8 @@ function explain(
     reasons.push(`Confidence held to ${confidence}% (raw ${total}) — not enough confluence backing it (regime/news/MTF).`);
   }
   if (grade === 'A+') reasons.push(`≥${GRADE_THRESHOLDS.APLUS}% earned confidence — A+, lean in.`);
-  if (grade === 'SIGNAL') reasons.push(`≥${GRADE_THRESHOLDS.SIGNAL}% earned confidence — fires as a signal.`);
-  if (grade === 'REJECT') reasons.push(`Below ${GRADE_THRESHOLDS.WATCH}% — no-trade, respected downstream.`);
+  if (grade === 'A') reasons.push(`≥${GRADE_THRESHOLDS.A}% earned confidence — A, fires as a signal.`);
+  if (grade === 'D') reasons.push(`Below ${GRADE_THRESHOLDS.C}% — D, no-trade, respected downstream.`);
   return reasons;
 }
 

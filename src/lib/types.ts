@@ -3,6 +3,8 @@
 export type Direction = 'long' | 'short'; // calls = long, puts = short bias
 export type OptionType = 'call' | 'put';
 export type Timeframe = 'scalp' | 'intraday' | 'swing';
+/** Universe tier — sets the alert bar. Extended names require A+ (>=90). */
+export type Tier = 'core' | 'focus' | 'extended';
 
 /** Raw inbound alert from the friend's bot (Discord "Schwab alerts"). */
 export interface RawAlert {
@@ -42,6 +44,7 @@ export interface TradeIdea {
   catalyst?: string; // news/flow note if present
   rawConfidence?: number; // bot's own confidence if it stated one (0-10)
   timeframe?: Timeframe; // scalp | intraday | swing (derived from MTF horizon)
+  tier?: Tier; // core (QQQ/SPY) | focus (mag7+semis) | extended (everything else)
   // Multi-timeframe confirmation (Stage 2): which bar intervals agree on direction.
   mtf?: { timeframes: string[]; agreement: number; conflict: boolean };
   notes?: string;
@@ -89,9 +92,10 @@ export interface ScoreBreakdown {
   confluenceCount: number; // how many factors materially agree (>=60)
 }
 
-// A+ = highest-conviction (>=92 earned confidence): fires loud, leans in.
-// SIGNAL = fires (>=80). WATCH = observe (65-79). REJECT = no-trade (<65).
-export type Grade = 'A+' | 'SIGNAL' | 'WATCH' | 'REJECT';
+// Letter grades on EARNED confidence: A+ >=90 (lean-in), A >=80 (fires),
+// B >=70 (watch), C >=60 (watch/log), D <60 (no-trade).
+// Core/Focus fire at A; Extended-universe names require A+ (>=90).
+export type Grade = 'A+' | 'A' | 'B' | 'C' | 'D';
 
 export interface GovernorDecision {
   grade: Grade;
@@ -119,6 +123,41 @@ export interface DayState {
   realizedPnlUsd: number;
   consecutiveLosses: number;
   cooldownUntil: number | null; // epoch ms
+  cooldownByTicker: Record<string, number>; // ticker -> epoch ms lock (revenge-trade guard)
+  openClusters: Record<string, number>; // correlation cluster -> open same-direction count (heat cap)
+  closed: ClosedTrade[]; // closed paper trades this session (feeds expectancy)
+}
+
+/** A closed paper trade — the unit expectancy is computed from. All fills MODELED. */
+export interface ClosedTrade {
+  ticker: string;
+  setup: string;
+  tier: Tier;
+  entryTimeEt: string;
+  exitTimeEt: string;
+  fillPremium: number; // per-share premium (modeled) paid at entry
+  exitPremium: number; // per-share premium (modeled) at exit
+  contracts: number;
+  costPaidUsd: number;
+  pnlUsd: number;
+  rMultiple: number;
+  holdMinutes: number;
+  result: 'win' | 'loss';
+  regime: 'up' | 'down' | 'flat';
+}
+
+/** Expectancy over closed trades. Drives the prove-it gate + EOD recap. */
+export interface ExpectancyStats {
+  trades: number;
+  winRate: number; // 0-1
+  avgWin: number; // R multiples (positive)
+  avgLoss: number; // R multiples (negative)
+  expectancyR: number; // per-trade expectancy in R
+  profitFactor: number;
+  avgHoldMinutes: number;
+  byRegime: Record<'up' | 'down' | 'flat', { trades: number; expectancyR: number }>;
+  sampleSizeAdequate: boolean; // trades >= config.risk.minPaperTrades
+  proven: boolean; // sampleSizeAdequate && expectancyR>0 && no negative regime bucket
 }
 
 /** One premium-based exit level (what you actually trade — the contract, not the stock). */
@@ -163,6 +202,11 @@ export interface PremiumFloorAlert {
   contractStyle: string; // e.g. "0DTE (same-day)" / "3DTE" / "7DTE"
   tradeLength: string; // e.g. "Quick scalp · minutes" / "5–30 min" / "Hours to days"
   newsContext: string; // regime + event/earnings + top headline
+  tier: Tier; // core | focus | extended (Extended surfaces only at A+)
+  entryTimeEt: string; // HH:MM:SS ET the signal fired (entry ticket)
+  costPerContractUsd: number | null; // modeled premium paid per contract
+  costPaidUsd: number | null; // modeled total for the position
+  timeToFlat: string; // exit timeframe / be-flat-by (EOD for 0DTE)
   exitPlan: ExitPlan; // Exit Brain: hold window, premium-based TPs, stop, invalidation
   text: string; // rendered, Discord-ready
 }
@@ -178,6 +222,7 @@ export interface BrokerOrder {
   stop: number | null;
   targets: number[];
   maxLossUsd: number;
+  entryTimeEt: string; // HH:MM:SS ET stamped when the order is built (entry ticket)
 }
 
 export type BrokerMode = 'paper' | 'approval' | 'live';
@@ -187,4 +232,9 @@ export interface BrokerResult {
   mode: BrokerMode;
   message: string;
   orderId?: string;
+  // Modeled fill economics (paper). All estimates — no live options chain.
+  fillPremium?: number; // per-share premium after modeled spread + slippage
+  costPerContractUsd?: number; // fillPremium * 100
+  costPaidUsd?: number; // total incl commission
+  slippageUsd?: number; // modeled slippage cost
 }

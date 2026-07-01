@@ -1,10 +1,13 @@
-// Component 7 — Trade Journal Memory. Records every alert, skip, fill, and
-// result with mistake tags + rule-improvement ideas, so the bot learns from
-// what it did AND what it skipped (feeds the missed-trade-learning-lab skill).
+// Component 7 — Trade Journal Memory. Records every alert, skip, fill, and result
+// with mistake tags + rule-improvement ideas, plus the entry ticket (tier, entry
+// time, modeled fill/cost) and a closed-trade store that feeds R-multiple
+// expectancy (the evidence behind the prove-it gate).
 
 import type {
   TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, BrokerResult,
+  ClosedTrade, ExpectancyStats, Tier,
 } from '../lib/types.js';
+import { computeExpectancy } from '../backtest/index.js';
 
 export type MistakeTag =
   | 'late_entry' | 'early_exit' | 'no_stop' | 'bad_contract' | 'ignored_regime'
@@ -22,6 +25,12 @@ export interface JournalEntry {
   approved: boolean;
   blocks: string[];
   brokerMessage: string;
+  // Entry ticket (present when a fill occurred).
+  tier?: Tier;
+  entryTimeEt?: string;
+  fillPremium?: number;
+  costPaidUsd?: number | null;
+  exitTimeframe?: string;
   joshNote?: string;
   mistakeTags: MistakeTag[];
   ruleIdea?: string;
@@ -29,6 +38,7 @@ export interface JournalEntry {
 
 export class TradeJournal {
   private entries: JournalEntry[] = [];
+  private closed: ClosedTrade[] = [];
 
   record(
     idea: TradeIdea,
@@ -39,7 +49,7 @@ export class TradeJournal {
   ): JournalEntry {
     const outcome: JournalEntry['outcome'] = !fw.approved
       ? 'skipped'
-      : decision.grade === 'WATCH' ? 'watch' : 'alerted';
+      : decision.grade === 'B' ? 'watch' : 'alerted';
 
     const entry: JournalEntry = {
       at: new Date().toISOString(),
@@ -52,11 +62,40 @@ export class TradeJournal {
       approved: fw.approved,
       blocks: fw.blocks,
       brokerMessage: broker?.message ?? '(no order placed)',
+      tier: alert.tier,
+      entryTimeEt: alert.entryTimeEt,
+      fillPremium: broker?.fillPremium,
+      costPaidUsd: alert.costPaidUsd,
+      exitTimeframe: alert.timeToFlat,
       mistakeTags: tagFrom(fw, decision),
       ruleIdea: ruleIdeaFrom(fw, decision),
     };
     this.entries.push(entry);
     return entry;
+  }
+
+  /** Record a MODELED paper close — the unit expectancy is computed from. R is
+   *  measured against the modeled premium stop. All fills MODELED (no live chain). */
+  closeTrade(t: {
+    ticker: string; setup: string; tier: Tier;
+    entryTimeEt: string; exitTimeEt: string;
+    fillPremium: number; exitPremium: number; contracts: number;
+    costPaidUsd: number; stopPremium: number;
+    regime: 'up' | 'down' | 'flat';
+  }): ClosedTrade {
+    const pnlUsd = round2((t.exitPremium - t.fillPremium) * 100 * t.contracts);
+    const riskUsd = Math.max(1, (t.fillPremium - t.stopPremium) * 100 * t.contracts);
+    const rMultiple = round2(pnlUsd / riskUsd);
+    const ct: ClosedTrade = {
+      ticker: t.ticker, setup: t.setup, tier: t.tier,
+      entryTimeEt: t.entryTimeEt, exitTimeEt: t.exitTimeEt,
+      fillPremium: t.fillPremium, exitPremium: t.exitPremium, contracts: t.contracts,
+      costPaidUsd: t.costPaidUsd, pnlUsd, rMultiple,
+      holdMinutes: holdMinutesBetween(t.entryTimeEt, t.exitTimeEt),
+      result: pnlUsd >= 0 ? 'win' : 'loss', regime: t.regime,
+    };
+    this.closed.push(ct);
+    return ct;
   }
 
   /** Attach Josh's own read to the most recent entry (his discretionary edge). */
@@ -66,6 +105,10 @@ export class TradeJournal {
   }
 
   all(): readonly JournalEntry[] { return this.entries; }
+  closedTrades(): readonly ClosedTrade[] { return this.closed; }
+
+  /** R-multiple expectancy over closed paper trades — feeds prove-it + EOD recap. */
+  expectancy(): ExpectancyStats { return computeExpectancy(this.closed); }
 
   summary(): { total: number; alerted: number; watched: number; skipped: number; topBlocks: string[] } {
     const counts = { alerted: 0, watched: 0, skipped: 0 };
@@ -84,6 +127,18 @@ export class TradeJournal {
   }
 }
 
+const round2 = (n: number): number => Math.round(n * 100) / 100;
+
+/** Minutes between two "HH:MM:SS" ET stamps (same session; wraps defensively). */
+function holdMinutesBetween(a: string, b: string): number {
+  const toMin = (s: string): number => {
+    const parts = s.split(':').map(Number);
+    return (parts[0] ?? 0) * 60 + (parts[1] ?? 0) + (parts[2] ?? 0) / 60;
+  };
+  const d = toMin(b) - toMin(a);
+  return round2(d >= 0 ? d : d + 24 * 60);
+}
+
 function tagFrom(fw: FirewallResult, decision: GovernorDecision): MistakeTag[] {
   const tags: MistakeTag[] = [];
   if (fw.blocks.some((b) => b.startsWith('no_clear_stop'))) tags.push('no_stop');
@@ -91,6 +146,7 @@ function tagFrom(fw: FirewallResult, decision: GovernorDecision): MistakeTag[] {
   if (fw.blocks.some((b) => b.includes('regime'))) tags.push('ignored_regime');
   if (fw.blocks.some((b) => b.includes('event'))) tags.push('ignored_news');
   if (fw.blocks.some((b) => b.includes('overtrading'))) tags.push('overtrade');
+  if (fw.blocks.some((b) => b.includes('name_cooldown'))) tags.push('revenge_trade');
   // A disciplined skip of a weak idea is a good outcome, worth labeling.
   if (!fw.approved && decision.total < 55) tags.push('great_skip');
   return tags;

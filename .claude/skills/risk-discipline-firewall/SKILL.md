@@ -1,10 +1,10 @@
 ---
 name: risk-discipline-firewall
-description: Enforce strict risk rules before any alert, paper trade, or broker-ready order. Use whenever a trade idea is being scored, approved, rejected, sized, or sent to Discord.
+description: Superseded — use risk-discipline-commander. Kept as a redirect so old references resolve.
 ---
 
-# Risk Discipline Firewall
+# Risk Discipline Firewall → superseded
 
-## Mission
-Protect the trader from bad conditions, emotional trades, overtrading, and bot overconfidence.
+This skill has been folded into **`risk-discipline-commander`**, which owns overtrading prevention, hard blocks, daily max signals, loss lockout, cooldown, max daily loss, and risk mode.
 
+➡ Use **risk-discipline-commander**.

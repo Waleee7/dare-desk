@@ -8,6 +8,7 @@ import type { MarketContext } from '../lib/types.js';
 import type { MarketDataProvider } from '../data/provider.js';
 import { sma, pctChange } from '../scan/indicators.js';
 import { getVerifiedHeadlines } from '../news/index.js';
+import { makeCalendarProvider, hasHighImpactToday } from '../calendar/index.js';
 
 type Trend = 'up' | 'down' | 'flat';
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -57,11 +58,6 @@ async function fearGreed(breadth: number, spy: Trend): Promise<number> {
   return Math.max(0, Math.min(100, Math.round(base)));
 }
 
-/** Macro event dates (CPI/FOMC/jobs) → real econ-calendar API is the next wire-up. */
-const MACRO_EVENT_DATES = new Set<string>([
-  // e.g. '2026-06-18' (FOMC). Empty until a calendar feed (Finnhub free) is wired.
-]);
-
 export interface ContextOpts {
   /** Tickers with earnings today/tomorrow (per-ticker; calendar feed later). */
   earningsSoon?: Set<string>;
@@ -93,7 +89,10 @@ export async function buildMarketContext(
   const breadth = tot ? round2((adv / tot) * 2 - 1) : 0;
 
   const todayKey = new Date().toISOString().slice(0, 10);
-  const news = await getVerifiedHeadlines(['SPY', 'QQQ'], 6);
+  const [news, macro] = await Promise.all([
+    getVerifiedHeadlines(['SPY', 'QQQ'], 6),
+    makeCalendarProvider().macroEvents(), // free econ calendar; [] without a key
+  ]);
 
   return {
     asOf: new Date().toISOString(),
@@ -105,7 +104,7 @@ export async function buildMarketContext(
     fearGreed: await fearGreed(breadth, spyTrend),
     // Real, attributed headlines (verified source) — empty if no news feed configured.
     headlines: news.map((n) => `${n.headline} — ${n.source}`),
-    eventRiskToday: MACRO_EVENT_DATES.has(todayKey),
-    earningsSoon: false, // set per-ticker by the caller
+    eventRiskToday: hasHighImpactToday(macro, todayKey),
+    earningsSoon: false, // set per-ticker by the caller (calendar.earningsFor)
   };
 }

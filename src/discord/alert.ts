@@ -1,14 +1,17 @@
-// Component 5 — Discord Alert Copilot (Stage 1 v2). Renders a clean signal (or a
-// "BOT PASSED" card) and now also surfaces contract style (0DTE/weekly/far),
-// expected trade length, and live market/news context. The Watching-feed
-// formatting + embeds live in dispatch.ts; this builds the canonical alert
-// object + plain text.
+// Component 5 — Discord Alert Copilot (Entry/Exit Architect). Renders a clean signal
+// (or a "BOT PASSED" card) with contract style, expected trade length, live
+// market/news context, and now the entry ticket: universe tier, exact entry time,
+// modeled cost paid, and the time-to-be-flat. The Watching-feed formatting lives in
+// dispatch.ts; this builds the canonical alert object + plain text.
 
 import type {
-  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, AlertStatus, MarketContext, ExitPlan,
+  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, AlertStatus, MarketContext, ExitPlan, Tier,
 } from '../lib/types.js';
 import { config } from '../lib/config.js';
 import { deriveExitPlan } from '../engine/exitPlan.js';
+import { applyRealisticFill } from '../backtest/index.js';
+import { etTimeString } from '../lib/clock.js';
+import { tierOf } from '../scan/universe.js';
 
 export function buildAlert(
   idea: TradeIdea,
@@ -23,7 +26,16 @@ export function buildAlert(
   const exitPlan = deriveExitPlan(idea, fw);
   const choppy = isChoppy(ctx, decision);
 
-  if (!fw.approved || decision.grade === 'REJECT') {
+  // Entry ticket — tier, exact entry time (ET), modeled cost paid, time-to-flat.
+  const tier = idea.tier ?? tierOf(idea.ticker);
+  const entryTimeEt = etTimeString();
+  const timeToFlat = deriveTimeToFlat(idea);
+  const fill = fw.approved && fw.positionContracts > 0 ? applyRealisticFill(idea.premium, fw.positionContracts) : null;
+  const costPerContractUsd = fill?.costPerContractUsd ?? null;
+  const costPaidUsd = fill?.costPaidUsd ?? null;
+  const extra: Derived = { contractStyle, tradeLength, newsContext, exitPlan, tier, entryTimeEt, timeToFlat, costPerContractUsd, costPaidUsd };
+
+  if (!fw.approved || decision.grade === 'D') {
     const text = [
       '⚠️ **BOT PASSED ON TRADE**',
       '',
@@ -34,22 +46,27 @@ export function buildAlert(
       `Confidence: ${decision.confidence}% (raw ${decision.total}/100) · ${gradeLabel(decision.grade)}`,
       `What needs to change: ${whatWouldFix(fw, decision)}`,
     ].filter(Boolean).join('\n');
-    return base(idea, decision, fw, 'rejection', 'rejected', text, { contractStyle, tradeLength, newsContext, exitPlan });
+    return base(idea, decision, fw, 'rejection', 'rejected', text, extra);
   }
 
-  const status: AlertStatus = decision.grade === 'WATCH'
+  const status: AlertStatus = decision.grade === 'B'
     ? 'watch'
     : config.liveTrading ? 'approval' : 'paper';
+
+  const costLine = costPaidUsd != null
+    ? `💵 Cost (modeled): $${costPerContractUsd}/contract · $${costPaidUsd} total — estimate, no live chain`
+    : '';
 
   const text = [
     `🚨 **${config.botName.toUpperCase()} SIGNAL**`,
     '',
-    `Ticker: ${idea.ticker}`,
+    `Ticker: ${idea.ticker}  ·  ${tierLabel(tier)}`,
     `Bias: ${idea.direction === 'long' ? 'CALLS' : 'PUTS'}`,
     `Setup: ${idea.setup}`,
     `Contract: ${contractStr}`,
     `Contract style: ${contractStyle}`,
     `Entry Zone: ${fmt(idea.entry)}`,
+    `⏰ Getting in @ ${entryTimeEt} ET  ·  flat by: ${timeToFlat}`,
     `Stop: ${fmt(fw.stop)}`,
     `Targets: ${fw.targets.map(fmt).join(' / ') || '—'}`,
     `Trade length: ${tradeLength}`,
@@ -57,6 +74,7 @@ export function buildAlert(
     `Timeframes: ${mtfLine(idea)}`,
     `Confidence: ${decision.confidence}%  ·  ${gradeLabel(decision.grade)}`,
     `Size: ${fw.positionContracts} contract(s) · max risk $${fw.maxLossUsd}${fw.rewardRisk != null ? ` · R:R ${fw.rewardRisk.toFixed(2)}` : ''}`,
+    costLine,
     '',
     'Why:',
     ...decision.reasons.slice(0, 3).map((r) => `• ${r}`),
@@ -64,12 +82,16 @@ export function buildAlert(
     `Market/News: ${newsContext}`,
     `Risk: ${riskLine(fw)}${choppy ? ' · ⚠️ choppy/elevated-vol — size down' : ''}`,
     `Status: ${statusLabel(status)}`,
-  ].join('\n');
+  ].filter(Boolean).join('\n');
 
-  return base(idea, decision, fw, 'alert', status, text, { contractStyle, tradeLength, newsContext, exitPlan });
+  return base(idea, decision, fw, 'alert', status, text, extra);
 }
 
-interface Derived { contractStyle: string; tradeLength: string; newsContext: string; exitPlan: ExitPlan; }
+interface Derived {
+  contractStyle: string; tradeLength: string; newsContext: string; exitPlan: ExitPlan;
+  tier: Tier; entryTimeEt: string; timeToFlat: string;
+  costPerContractUsd: number | null; costPaidUsd: number | null;
+}
 
 /** Render the Exit Brain as the human-facing block in the alert text. */
 function exitLines(ep: ExitPlan): string[] {
@@ -92,9 +114,11 @@ function base(
     kind, ticker: idea.ticker, direction: idea.direction, setup: idea.setup,
     contract: idea.contract, entry: idea.entry, stop: fw.stop, targets: fw.targets,
     confidence: decision.confidence, grade: decision.grade,
-    why: decision.reasons, risk: riskLine(fw), status, text,
+    why: decision.reasons, risk: riskLine(fw), status,
     contractStyle: d.contractStyle, tradeLength: d.tradeLength, newsContext: d.newsContext,
-    exitPlan: d.exitPlan,
+    tier: d.tier, entryTimeEt: d.entryTimeEt, timeToFlat: d.timeToFlat,
+    costPerContractUsd: d.costPerContractUsd, costPaidUsd: d.costPaidUsd,
+    exitPlan: d.exitPlan, text,
   };
 }
 
@@ -122,6 +146,19 @@ export function deriveTradeLength(idea: TradeIdea): string {
   }
 }
 
+const tierLabel = (t: Tier): string =>
+  t === 'core' ? 'CORE (QQQ/SPY)' : t === 'focus' ? 'FOCUS (mag7/semis)' : 'EXTENDED (A+ only)';
+
+/** Concise "be flat by" for the entry ticket — 0DTE has a hard EOD clock. */
+function deriveTimeToFlat(idea: TradeIdea): string {
+  if (idea.contract.dte === 0) return 'Flat by 15:55 ET (0DTE — no overnight)';
+  switch (idea.timeframe) {
+    case 'scalp': return 'Flat within ~15 min';
+    case 'swing': return 'Manage 1–2 days';
+    default: return 'Flat by the close';
+  }
+}
+
 const mtfLine = (idea: TradeIdea): string =>
   idea.mtf
     ? `${idea.mtf.timeframes.join(', ')} ✓ (${idea.mtf.agreement}/3)${idea.mtf.conflict ? ' · ⚠️ conflict' : ''}`
@@ -142,7 +179,7 @@ function isChoppy(ctx: MarketContext, decision: GovernorDecision): boolean {
 const fgLabel = (n: number) => (n < 25 ? 'extreme fear' : n < 45 ? 'fear' : n < 55 ? 'neutral' : n < 75 ? 'greed' : 'extreme greed');
 const fmt = (n: number | null | undefined) => (n == null ? '—' : String(n));
 const gradeLabel = (g: string) =>
-  g === 'A+' ? '🔥 A+ SIGNAL' : g === 'SIGNAL' ? '🚨 SIGNAL' : g === 'WATCH' ? '👀 WATCHING' : 'PASS';
+  g === 'A+' ? '🔥 A+ SIGNAL' : g === 'A' ? '🚨 A SIGNAL' : g === 'B' ? '👀 B WATCHING' : g === 'C' ? '👁 C watch' : 'PASS';
 
 function statusLabel(s: AlertStatus): string {
   switch (s) {
@@ -165,8 +202,12 @@ function whatWouldFix(fw: FirewallResult, decision: GovernorDecision): string {
   if (fw.blocks.some((b) => b.startsWith('no_clear_stop'))) return 'define a clear stop';
   if (fw.blocks.some((b) => b.includes('spread'))) return 'find a tighter contract';
   if (fw.blocks.some((b) => b.includes('reward_risk'))) return 'better entry for ≥1.5 R:R';
+  if (fw.blocks.some((b) => b.includes('extended_below'))) return 'Extended-universe name — needs A+ (≥90)';
+  if (fw.blocks.some((b) => b.includes('correlation_heat'))) return 'already loaded in this cluster — wait for one to close';
+  if (fw.blocks.some((b) => b.includes('chased'))) return 'price ran — wait for a pullback into the zone';
+  if (fw.blocks.some((b) => b.includes('lunch'))) return 'lunch chop — wait for the afternoon trend';
   if (fw.blocks.some((b) => b.includes('regime'))) return 'wait for a friendlier regime';
   if (fw.blocks.some((b) => b.includes('event'))) return 'wait until after the event';
-  if (decision.grade === 'WATCH') return 'one more confirmation to promote from watch';
+  if (decision.grade === 'B') return 'one more confirmation to promote from watch';
   return 'more confluence across factors';
 }
