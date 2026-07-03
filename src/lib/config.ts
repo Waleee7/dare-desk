@@ -6,6 +6,14 @@ const num = (v: string | undefined, d: number): number => {
   return Number.isFinite(n) ? n : d;
 };
 
+/** Parse "580-660,840-915" into ET-minute windows. Bad input → no windows (gate off). */
+function parseWindows(s: string): { startMin: number; endMin: number }[] {
+  return s.split(',')
+    .map((w) => w.trim().split('-').map(Number))
+    .filter((p): p is [number, number] => p.length === 2 && p.every((n) => Number.isFinite(n)) && p[0]! < p[1]!)
+    .map(([startMin, endMin]) => ({ startMin, endMin }));
+}
+
 export const config = {
   // Bot identity — used in alerts + dashboard. Change here (or BOT_NAME env) to rebrand.
   botName: process.env.BOT_NAME || 'DARE Desk',
@@ -37,6 +45,18 @@ export const config = {
     suppressLunch: (process.env.SUPPRESS_LUNCH || 'true').toLowerCase() === 'true',
     minPaperTrades: num(process.env.MIN_PAPER_TRADES, 100), // prove-it gate sample size
     zeroDteFlatByMinEt: num(process.env.ZERO_DTE_FLAT, 955), // 15:55 ET — be flat on 0DTE
+    // Discipline upgrades (2026-07 Tier 1+2 build) — all env-tunable.
+    maxOpenPositions: num(process.env.MAX_OPEN_POSITIONS, 5), // concurrent paper positions cap
+    maxOpenRiskPct: num(process.env.MAX_OPEN_RISK_PCT, 3), // total open premium-at-risk cap (% of account)
+    profitLockTriggerPct: num(process.env.PROFIT_LOCK_TRIGGER_PCT, 2), // arm the give-back guard at +2% day
+    profitLockGivebackPct: num(process.env.PROFIT_LOCK_GIVEBACK_PCT, 50), // stand down if 50% of peak gives back
+    weeklyBreakerLossPct: num(process.env.WEEKLY_BREAKER_LOSS_PCT, 6), // rolling 5-day realized loss → stand down
+    redStreakHalfSizeDays: num(process.env.RED_STREAK_DAYS, 3), // consecutive red days → half-size until green
+    openingGuardMin: num(process.env.OPENING_GUARD_MIN, 10), // no fresh fires the first N min (0 = off)
+    thetaBudgetPct: num(process.env.THETA_BUDGET_PCT, 35), // block if decay over the hold eats >35% of TP1 gain
+    refireCooldownMin: num(process.env.REFIRE_COOLDOWN_MIN, 45), // same ticker+setup+direction re-fire lock
+    // 0DTE entries only inside the gamma windows (ET minutes): open drive + power hour.
+    zeroDteWindows: parseWindows(process.env.ZERO_DTE_WINDOWS || '580-660,840-915'),
   },
 
   liveTrading: (process.env.LIVE_TRADING || 'false').toLowerCase() === 'true',
@@ -45,6 +65,15 @@ export const config = {
   // Separate "Watching" channel (WATCH-grade setups). Falls back to the main
   // webhook if unset, so one webhook still works.
   discordWatchWebhookUrl: process.env.DISCORD_WATCH_WEBHOOK_URL || '',
+  // Multi-channel server layout (all optional — everything falls back gracefully):
+  //   #trade-management — exit monitor talk + EOD recap (falls back to main)
+  //   #news             — breaking headlines (silent when unset; no spam fallback)
+  //   #mag7             — fires on mag7/semis names cross-post here (optional)
+  //   #spy-qqq          — fires on index ETFs cross-post here (optional)
+  discordTradeMgmtWebhookUrl: process.env.DISCORD_TRADE_MGMT_WEBHOOK_URL || '',
+  discordNewsWebhookUrl: process.env.DISCORD_NEWS_WEBHOOK_URL || '',
+  discordMag7WebhookUrl: process.env.DISCORD_MAG7_WEBHOOK_URL || '',
+  discordIndexWebhookUrl: process.env.DISCORD_INDEX_WEBHOOK_URL || '',
 
   // Market-data feed. Robinhood has NO data API (execution-only), so the live
   // feed comes from Alpaca: free + real-time IEX for the underlyings.

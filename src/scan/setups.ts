@@ -7,7 +7,7 @@
 
 import type { Bar } from '../data/provider.js';
 import type { Direction, Timeframe } from '../lib/types.js';
-import { rsi, vwap, atr, sma, last, pctChange } from './indicators.js';
+import { rsi, vwap, atr, sma, last, pctChange, sessionBars } from './indicators.js';
 
 export interface SetupSignal {
   setup: string;
@@ -60,11 +60,17 @@ export function detectSetups(intraday: Bar[], daily: Bar[], refReturnPct: number
   const price = last(closes)!;
   const prev = closes[closes.length - 2]!;
   const a = atr(intraday) ?? price * 0.002;
-  const vw = vwap(intraday);
+  // SESSION-ANCHORED reads: VWAP, session open, and the volume-surge baseline
+  // use only today's 9:30+ bars — premarket/prior-day bars poison the anchor.
+  // Rolling reads (RSI/ATR/MA/recent ranges) keep the full window. Falls back
+  // to rolling bars when the session is too young (or data is synthetic).
+  const sess = sessionBars(intraday);
+  const anchored = sess.length >= 20 ? sess : intraday;
+  const vw = vwap(anchored);
   const r = rsi(closes);
   const ma = sma(closes, 20);
   const lastBar = last(intraday)!;
-  const surge = volumeSurge(intraday);
+  const surge = volumeSurge(anchored.length >= 21 ? anchored : intraday);
 
   // Conviction modifiers: index ETFs respect levels; momentum names get a bump on
   // trend plays; a volume surge confirms anything.
@@ -79,7 +85,7 @@ export function detectSetups(intraday: Bar[], daily: Bar[], refReturnPct: number
   const pdh = pd?.h ?? null;
   const pdl = pd?.l ?? null;
   const pdc = pd?.c ?? null;
-  const sessionOpen = intraday[0]!.o;
+  const sessionOpen = anchored[0]!.o; // today's actual 9:30 open, not "60 bars ago"
 
   // 1) VWAP reclaim / reject (scalp) — crossed back through session VWAP.
   if (vw != null) {

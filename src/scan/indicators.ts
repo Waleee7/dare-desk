@@ -2,6 +2,20 @@
 // reads only bars up to its index.
 
 import type { Bar } from '../data/provider.js';
+import { etMinutes } from '../lib/clock.js';
+
+/**
+ * Bars from TODAY'S regular session only (9:30 ET onward). Session-anchored
+ * calculations — VWAP, session open, opening range, volume baselines — must
+ * never see premarket or prior-day bars, or the anchor is a lie all morning.
+ * Returns [] before the open; callers fall back to rolling bars when too thin.
+ */
+export function sessionBars(bars: Bar[], now: Date = new Date()): Bar[] {
+  const minsSinceOpen = etMinutes(now) - 570; // 9:30 ET
+  if (minsSinceOpen < 0) return [];
+  const sessionStartMs = now.getTime() - minsSinceOpen * 60_000 - now.getSeconds() * 1000;
+  return bars.filter((b) => b.t >= sessionStartMs - 30_000); // tolerance for bar-open stamps
+}
 
 export const last = <T>(a: T[]): T | undefined => a[a.length - 1];
 
@@ -10,6 +24,17 @@ export function sma(values: number[], n: number): number | null {
   let sum = 0;
   for (let i = values.length - n; i < values.length; i++) sum += values[i]!;
   return sum / n;
+}
+
+/** Exponential moving average of the last value (seeded with an SMA of the first n). */
+export function ema(values: number[], n: number): number | null {
+  if (values.length < n) return null;
+  const k = 2 / (n + 1);
+  let e = 0;
+  for (let i = 0; i < n; i++) e += values[i]!;
+  e /= n;
+  for (let i = n; i < values.length; i++) e = values[i]! * k + e * (1 - k);
+  return e;
 }
 
 /** Wilder-style RSI over closes. */

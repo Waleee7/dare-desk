@@ -75,7 +75,7 @@ export class PaperBroker implements BrokerAdapter {
  */
 export class RobinhoodAgentMcpBroker implements BrokerAdapter {
   readonly mode: BrokerMode = 'approval';
-  constructor(private readonly unlocked: boolean) {}
+  constructor(private readonly unlocked: boolean, private readonly proveItPassed: boolean) {}
   async place(order: BrokerOrder): Promise<BrokerResult> {
     if (!config.liveTrading || !this.unlocked) {
       return {
@@ -87,13 +87,24 @@ export class RobinhoodAgentMcpBroker implements BrokerAdapter {
           + `${order.contracts}x ${order.ticker} ${order.strike}${order.optionType[0]!.toUpperCase()}.`,
       };
     }
+    // The prove-it gate is STRUCTURAL, not copy: no live order without >=100
+    // validated paper trades, positive expectancy, and no losing regime bucket.
+    if (!this.proveItPassed) {
+      return {
+        accepted: false,
+        mode: this.mode,
+        message: 'PROVE-IT GATE — live execution refused: the paper track record has not '
+          + 'cleared the 100-trade / positive-expectancy / no-losing-regime bar. Keep paper trading.',
+      };
+    }
     // Phase 3: MCP-client call to config.robinhoodMcpUrl in approval mode.
     return { accepted: false, mode: this.mode, message: 'RH MCP execution not implemented in this build (Phase 3).' };
   }
 }
 
-/** Pick the broker. Always paper unless live is explicitly enabled AND unlocked. */
-export function selectBroker(unlock = false): BrokerAdapter {
-  if (config.liveTrading && unlock) return new RobinhoodAgentMcpBroker(unlock);
+/** Pick the broker. Always paper unless live is explicitly enabled AND unlocked —
+ *  and even then the prove-it gate must have passed for a live order to go out. */
+export function selectBroker(unlock = false, proveItPassed = false): BrokerAdapter {
+  if (config.liveTrading && unlock) return new RobinhoodAgentMcpBroker(unlock, proveItPassed);
   return new PaperBroker();
 }

@@ -5,3 +5,9 @@ dist/
 *.log
 .DS_Store
 journal.json
+
+# Runtime output (the bot writes these every tick — never track)
+data/*.json
+data/STOP
+dashboard/.next/
+.playwright-mcp/

@@ -30,6 +30,58 @@ export interface Contract {
   volume?: number;
 }
 
+// --- Multi-timeframe trend engine (the "which way is the chart actually going" layer) ---
+
+export type TrendDir = 'up' | 'down' | 'flat';
+export type TrendLabel = '15m' | '1h' | '4h' | '1D';
+
+/** One timeframe's trend read: EMA9 vs EMA21 vs price, with RSI for context. */
+export interface TimeframeTrend {
+  label: TrendLabel;
+  dir: TrendDir;
+  emaFast: number | null; // EMA9
+  emaSlow: number | null; // EMA21
+  rsi: number | null;
+  pctFromEmaSlow: number | null; // how extended price is vs the slow EMA (%)
+}
+
+/** Higher-timeframe trend stack for a ticker — 15m/1h/4h/1D + alignment. */
+export interface TrendSnapshot {
+  ticker: string;
+  asOf: string;
+  timeframes: TimeframeTrend[];
+  alignment: 'aligned-up' | 'aligned-down' | 'mixed';
+  alignScore: number; // up-TF count minus down-TF count (-4..+4)
+}
+
+// --- Key levels: where the walls are (price structure + options positioning) ---
+
+/** The levels that matter for a ticker right now. Support/resistance come from
+ *  swing structure + volume nodes + prior-day levels; call/put walls come from
+ *  the DELAYED options chain (biggest OI strikes — dealer-hedging magnets). */
+export interface KeyLevels {
+  ticker: string;
+  asOf: string;
+  price: number; // reference price when computed
+  support: number[]; // below price, nearest first
+  resistance: number[]; // above price, nearest first
+  volumeNodes: number[]; // top high-volume price areas (volume profile peaks)
+  callWall: number | null; // biggest call-OI strike at/above price (delayed chain)
+  putWall: number | null; // biggest put-OI strike at/below price (delayed chain)
+  gammaMagnets: number[]; // OI-cluster strikes price tends to pin toward
+  prevDayHigh: number | null;
+  prevDayLow: number | null;
+  prevClose: number | null;
+}
+
+/** Relative volume — is real participation behind the move, or is the tape dead? */
+export interface VolumeStats {
+  ticker: string;
+  rvol: number | null; // today's volume pace vs the 20-day average (1.0 = normal)
+  lastBarSurge: boolean; // latest bar printed > 1.3x its 20-bar average
+  note: string;
+}
+
 /** A structured trade idea, parsed from a RawAlert. Prices are underlying $. */
 export interface TradeIdea {
   alertId: string;
@@ -47,6 +99,10 @@ export interface TradeIdea {
   tier?: Tier; // core (QQQ/SPY) | focus (mag7+semis) | extended (everything else)
   // Multi-timeframe confirmation (Stage 2): which bar intervals agree on direction.
   mtf?: { timeframes: string[]; agreement: number; conflict: boolean };
+  // Intelligence layer (2026-07): higher-TF trend stack, walls/levels, participation.
+  trend?: TrendSnapshot;
+  levels?: KeyLevels;
+  rvol?: VolumeStats;
   notes?: string;
 }
 
@@ -63,6 +119,9 @@ export interface MarketContext {
   headlines: string[]; // recent market/ticker headlines
   eventRiskToday: boolean; // CPI/FOMC/Powell/jobs or surprise
   earningsSoon: boolean; // earnings today/tomorrow for the ticker
+  /** Intraday character of TODAY'S tape (not the daily trend): trend days reward
+   *  continuation, range days shred breakouts. 'forming' = too early to call. */
+  dayType?: 'trend-up' | 'trend-down' | 'range' | 'forming';
 }
 
 export type FactorName =
@@ -116,16 +175,31 @@ export interface FirewallResult {
   rewardRisk: number | null;
 }
 
-/** Mutable per-day risk state the firewall reads + updates. */
+/** Mutable per-day risk state the firewall reads + updates. PERSISTED to
+ *  data/day.json — a restart must never amnesia the limits protecting the book. */
 export interface DayState {
   date: string; // YYYY-MM-DD
   tradesToday: number;
   realizedPnlUsd: number;
+  peakPnlUsd: number; // high-water mark of the day (drives the profit lock)
   consecutiveLosses: number;
   cooldownUntil: number | null; // epoch ms
+  cooldownCount: number; // loss-streak cooldowns triggered today (2nd = done for the day)
   cooldownByTicker: Record<string, number>; // ticker -> epoch ms lock (revenge-trade guard)
   openClusters: Record<string, number>; // correlation cluster -> open same-direction count (heat cap)
+  openPositionsCount: number; // live paper positions on (aggregate cap)
+  openRiskUsd: number; // total premium at risk across open positions (aggregate cap)
+  sizeMultiplier: number; // 1 normally; 0.5 after a red-day streak until a green day
+  standDownReason: string | null; // set at day-roll (e.g. weekly breaker) — blocks all fires
   closed: ClosedTrade[]; // closed paper trades this session (feeds expectancy)
+}
+
+/** One finished day, persisted to data/dayHistory.json — fuels the weekly breaker
+ *  and the red-streak half-size rule. */
+export interface DaySummary {
+  date: string;
+  realizedPnlUsd: number;
+  trades: number;
 }
 
 /** A closed paper trade — the unit expectancy is computed from. All fills MODELED. */
@@ -223,6 +297,66 @@ export interface BrokerOrder {
   targets: number[];
   maxLossUsd: number;
   entryTimeEt: string; // HH:MM:SS ET stamped when the order is built (entry ticket)
+}
+
+// --- Exit monitor: open paper positions + the events they emit -------------------
+
+export type ExitEventKind =
+  | 'opened' // paper fill recorded, monitor is watching it
+  | 'approaching_tp1' // premium within reach of TP1 — "looking to take the base hit"
+  | 'tp1_scaled' // TP1 hit — half banked, runner stays on, stop → breakeven
+  | 'approaching_stop' // premium near the stop — "looking to get out"
+  | 'stopped' // stop hit — full exit
+  | 'target_hit' // TP2 / runner target hit — full exit
+  | 'time_stop' // hold window expired — out on the clock
+  | 'flat_by_close'; // 0DTE flat-by / end-of-day discipline exit
+
+/** One exit-monitor transition — rendered to Discord (#trade-management) + dashboard. */
+export interface ExitEvent {
+  at: string; // ISO
+  etTime: string; // HH:MM:SS ET
+  kind: ExitEventKind;
+  ticker: string;
+  positionId: string;
+  message: string; // human, Discord-ready one-liner
+  estPremium: number | null; // modeled premium at event time
+  premiumPct: number | null; // vs entry fill (+31 = up 31%)
+}
+
+/** An open MODELED paper position the exit monitor manages. Persisted to
+ *  data/positions.json so a runner restart never orphans a trade. */
+export interface OpenPosition {
+  id: string; // broker orderId
+  ticker: string;
+  direction: Direction;
+  setup: string;
+  tier: Tier;
+  grade: Grade;
+  contract: Contract;
+  horizon: Timeframe;
+  contracts: number; // remaining on (after a TP1 scale-out: the runner half)
+  initialContracts: number;
+  entryTimeEt: string;
+  openedAtMs: number;
+  minutesToCloseAtEntry: number; // session minutes left when opened — theta clock
+  entryUnderlying: number | null;
+  fillPremium: number; // modeled per-share entry fill
+  costPaidUsd: number;
+  delta: number; // modeled delta — drives the premium re-quote
+  // Exit plan in PREMIUM terms (what we actually manage by):
+  tp1Premium: number;
+  tp2Premium: number;
+  stopPremium: number; // moves to breakeven (fillPremium) after TP1
+  timeStopMin: number; // 0 = manage by level only
+  zeroDte: boolean;
+  status: 'open' | 'runner'; // runner = TP1 banked, rest riding
+  scaledOutPremium: number | null; // premium banked on the TP1 half
+  warnedTp1: boolean;
+  warnedStop: boolean;
+  regime: 'up' | 'down' | 'flat'; // regime at entry (expectancy bucket)
+  lastEstPremium: number | null;
+  lastUnderlying: number | null;
+  events: ExitEvent[];
 }
 
 export type BrokerMode = 'paper' | 'approval' | 'live';

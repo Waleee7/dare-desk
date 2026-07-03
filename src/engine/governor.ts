@@ -8,7 +8,16 @@
 import type {
   TradeIdea, FactorScore, FactorName, ScoreBreakdown, GovernorDecision, Grade,
 } from '../lib/types.js';
-import { WEIGHTS, GRADE_THRESHOLDS } from '../lib/config.js';
+import { WEIGHTS, GRADE_THRESHOLDS, config } from '../lib/config.js';
+import { htfAgrees, fightsHtf } from '../context/trend.js';
+import { CONTINUATION_SETUP } from '../context/dayType.js';
+import type { MarketContext } from '../lib/types.js';
+
+/** Tape conditions the governor may factor in (all optional — pure without them). */
+export interface GovernContext {
+  dayType?: MarketContext['dayType'];
+  etMin?: number; // minutes past ET midnight at decision time
+}
 
 const AGREE = 60; // a factor "materially agrees" at >= 60 on its axis
 
@@ -22,6 +31,7 @@ const isScoreable = (f: FactorScore): boolean => !f.flags.some((fl) => UNSCOREAB
 export function governDecision(
   idea: TradeIdea,
   factors: Record<FactorName, FactorScore>,
+  ctx: GovernContext = {},
 ): GovernorDecision {
   // Weighted total over the factors we can actually measure: drop unscoreable
   // ones (e.g. no live options chain) and renormalize the remaining weights.
@@ -37,11 +47,11 @@ export function governDecision(
   // Confluence counts only factors we can actually measure (don't credit a gap).
   const confluenceCount = activeNames.filter((n) => factors[n].score >= AGREE).length;
 
-  const confidence = earnedConfidence(total, factors, idea);
+  const { confidence, capNotes } = earnedConfidence(total, factors, idea, ctx);
 
   const breakdown: ScoreBreakdown = { factors, total, confidence, confluenceCount };
   const grade = gradeFor(confidence);
-  const reasons = explain(factors, grade, confluenceCount, total, confidence);
+  const reasons = [...explain(factors, grade, confluenceCount, total, confidence), ...capNotes];
 
   return { grade, total, confidence, breakdown, reasons };
 }
@@ -57,9 +67,14 @@ function earnedConfidence(
   total: number,
   factors: Record<FactorName, FactorScore>,
   idea: TradeIdea,
-): number {
+  ctx: GovernContext,
+): { confidence: number; capNotes: string[] } {
+  const capNotes: string[] = [];
   const regimeAgree = factors.regime.score >= AGREE;
-  const newsAgree = factors.news.score >= AGREE;
+  // News must be a REAL catalyst (>=75) to help unlock the top of the range — a
+  // quiet no-event tape scores ~65 and is neutral, not confirmation. Without this
+  // the A+ bar quietly degrades to "regime alone", which is not the design.
+  const newsAgree = factors.news.score >= 75;
   // Chain only "agrees" if we actually verified it — an unscoreable chain can't
   // unlock the top of the range (so missing options data caps confidence at 95).
   // A DELAYED free chain counts modestly in the weighted total but must NOT unlock the
@@ -68,13 +83,34 @@ function earnedConfidence(
     && factors.optionsChain.score >= AGREE
     && !factors.optionsChain.flags.includes('chain_delayed');
   const mtfStrong = !!idea.mtf && idea.mtf.agreement >= 2 && !idea.mtf.conflict;
+  // Higher-timeframe stack (15m/1h/4h/1D): agreement is real confirmation and can
+  // help unlock the top of the range; FIGHTING an aligned stack is the classic
+  // 0/10 loser — it can never fire, whatever the intraday chart says.
+  const htfStrong = !!idea.trend && htfAgrees(idea.trend, idea.direction);
+  const htfFight = !!idea.trend && fightsHtf(idea.trend, idea.direction);
 
   let ceiling = 82; // clean technical setup, alone → tops out at B (can't fire)
   if (regimeAgree) ceiling = 90; // + market regime backs it → CAN reach A (fires)
-  if (regimeAgree && (newsAgree || mtfStrong)) ceiling = 95; // + catalyst or multi-TF → A+
+  if (regimeAgree && (newsAgree || mtfStrong || htfStrong)) ceiling = 95; // + catalyst / multi-TF / HTF stack → A+
   if (regimeAgree && newsAgree && chainAgree) ceiling = 100; // full confluence
+  if (htfFight) {
+    ceiling = Math.min(ceiling, 78); // against an aligned HTF stack → watch at best
+    capNotes.push('Fighting the aligned higher-timeframe stack — watch-only, whatever the intraday chart says.');
+  }
 
-  return Math.max(0, Math.min(total, ceiling));
+  // Day-character caps — WATCH, not delete: the setup still posts to the watch
+  // feed, it just can't fire into conditions that statistically shred it.
+  if (ctx.dayType === 'range' && CONTINUATION_SETUP.test(idea.setup)) {
+    ceiling = Math.min(ceiling, 78);
+    capNotes.push('Range/chop day — breakout & continuation plays demoted to watch until the tape proves trend.');
+  }
+  const guard = config.risk.openingGuardMin;
+  if (guard > 0 && ctx.etMin != null && ctx.etMin >= 570 && ctx.etMin < 570 + guard) {
+    ceiling = Math.min(ceiling, 78);
+    capNotes.push(`First ${guard} minutes — spreads are widest and the range hasn't formed; watch-only.`);
+  }
+
+  return { confidence: Math.max(0, Math.min(total, ceiling)), capNotes };
 }
 
 function gradeFor(confidence: number): Grade {

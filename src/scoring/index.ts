@@ -5,8 +5,10 @@
 import { z } from 'zod';
 import type { TradeIdea, MarketContext, FactorScore, FactorName } from '../lib/types.js';
 import { structuredCall } from '../lib/llm.js';
-import { makeOptionsProvider } from '../options/index.js';
+import { getChainSnapshot } from '../options/index.js';
 import type { ChainSnapshot } from '../options/provider.js';
+import { htfAgrees, fightsHtf, trendLine } from '../context/trend.js';
+import { levelsLine } from '../scan/levels.js';
 
 const ScoreSchema = z.object({
   score: z.number().min(0).max(100),
@@ -45,6 +47,9 @@ function ideaText(idea: TradeIdea): string {
     `Entry: ${idea.entry ?? '?'}  Stop: ${idea.stop ?? '?'}  Targets: ${idea.targets.join(', ') || '?'}`,
     `Premium: ${idea.premium ?? '?'}  Catalyst: ${idea.catalyst ?? 'none'}`,
     `MTF: ${idea.mtf ? `${idea.mtf.timeframes.join('+')} confirm${idea.mtf.conflict ? ' — CONFLICT on another timeframe' : ''}` : 'n/a'}`,
+    `Higher-TF trend: ${idea.trend ? trendLine(idea.trend) : 'n/a'}`,
+    `Key levels/walls: ${idea.levels ? levelsLine(idea.levels) : 'n/a'}`,
+    `Volume: ${idea.rvol ? `${idea.rvol.note}${idea.rvol.lastBarSurge ? ' · trigger-bar surge' : ''}` : 'n/a'}`,
   ].join('\n');
 }
 
@@ -78,7 +83,20 @@ vague or "chasing" entries and missing levels. Output {score, rationale, flags}.
       if (idea.mtf.conflict) { s -= 15; flags.push('mtf_conflict'); }
       else if (idea.mtf.agreement >= 2) flags.push(`mtf_${idea.mtf.agreement}tf`);
     }
-    return { score: s, rationale: `Heuristic: "${idea.setup}", ${idea.mtf ? `${idea.mtf.timeframes.join('+')} TF${idea.mtf.conflict ? ' (conflict)' : ''}` : 'single TF'}, levels ${idea.stop != null ? 'defined' : 'incomplete'}.`, flags };
+    // Higher-TF trend stack: riding an aligned stack is edge; fighting one is the
+    // classic 0/10 pattern — punished hard here AND capped by the governor ceiling.
+    if (idea.trend) {
+      if (htfAgrees(idea.trend, idea.direction)) { s += 10; flags.push('htf_aligned'); }
+      else if (fightsHtf(idea.trend, idea.direction)) { s -= 18; flags.push('fighting_htf'); }
+    }
+    // Participation: a move on hot RVOL is real; a breakout on a dead tape is a trap.
+    if (idea.rvol?.rvol != null) {
+      if (idea.rvol.rvol >= 1.5) { s += 8; flags.push('rvol_hot'); }
+      else if (idea.rvol.rvol < 0.6) { s -= 10; flags.push('dead_tape'); }
+    }
+    if (idea.rvol?.lastBarSurge) s += 4;
+    const trendNote = idea.trend ? `, HTF ${idea.trend.alignment}` : '';
+    return { score: s, rationale: `Heuristic: "${idea.setup}", ${idea.mtf ? `${idea.mtf.timeframes.join('+')} TF${idea.mtf.conflict ? ' (conflict)' : ''}` : 'single TF'}${trendNote}, levels ${idea.stop != null ? 'defined' : 'incomplete'}.`, flags };
   });
 }
 
@@ -134,7 +152,9 @@ Penalize spiking VIX, event-risk days, and extreme sentiment against the trade. 
 export function scoreNews(idea: TradeIdea, ctx: MarketContext): Promise<FactorScore> {
   const system = `Score the NEWS/CATALYST picture for this trade, 0-100.
 Confirmed directional catalyst = boost. Unknown event risk (earnings into the trade, macro prints)
-without an event strategy = penalty. Inflated IV from a known event = warn. Output {score, rationale, flags}.`;
+without an event strategy = penalty. Inflated IV from a known event = warn.
+IMPORTANT: a quiet tape with NO catalyst is NEUTRAL — score it 60-70. Reserve >=75
+for a REAL, verifiable directional catalyst; >=75 counts as confirmation upstream. Output {score, rationale, flags}.`;
   return llmOrHeuristic('news', system, `${ideaText(idea)}\n\n${ctxText(ctx)}`, () => {
     // A clean tape with no event risk is mildly supportive, not neutral-negative.
     let s = 65;
@@ -214,7 +234,8 @@ export async function scoreAll(
 ): Promise<Record<FactorName, FactorScore>> {
   // Whale-flow: pull a FREE/DELAYED options snapshot (never throws → null on any
   // failure/rate-limit) so the chain lens has soft flow context when available.
-  const chain = await makeOptionsProvider().snapshot(idea.ticker).catch(() => null);
+  // Cached per tick — the scanner's levels engine already fetched this chain.
+  const chain = await getChainSnapshot(idea.ticker);
   const [technical, joshLens, regime, news, optionsChain, riskReward] = await Promise.all([
     scoreTechnical(idea, ctx),
     scoreJoshLens(idea, ctx),

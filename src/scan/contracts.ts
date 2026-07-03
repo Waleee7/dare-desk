@@ -91,11 +91,54 @@ const gammaFor = (horizon: Timeframe): number => (horizon === 'scalp' ? 0.022 : 
  * Premium at a given underlying move. `favorable` = price moving toward the target
  * (premium up); otherwise toward the stop (premium down, theta-dominated — no gamma
  * help on losers). `move` is the |underlying $ distance|. delta+gamma model.
+ * The favorable gain is capped at $1-per-$1 of underlying move — an option's
+ * effective delta can never exceed 1, however convex the gamma model gets.
  */
 export function premiumAt(entryPremium: number, delta: number, move: number, horizon: Timeframe, favorable: boolean): number {
   const g = gammaFor(horizon);
-  if (favorable) return tidy(entryPremium + delta * move + 0.5 * g * move * move);
+  if (favorable) return tidy(entryPremium + Math.min(move, delta * move + 0.5 * g * move * move));
   return Math.max(0.01, tidy(entryPremium - delta * move));
+}
+
+// --- Theta: the tax every long-premium hold pays --------------------------------
+
+/** Extrinsic share of the entry premium by horizon — scalps sit OTM (all time
+ *  value); longer holds carry some intrinsic/expectation. MODELED. */
+const EXTRINSIC_SHARE: Record<Timeframe, number> = { scalp: 1.0, intraday: 0.9, swing: 0.8 };
+
+/**
+ * Modeled theta bleed ($/share) after `elapsedMin` of holding. Square-root-of-time
+ * decay of the extrinsic value over the option's remaining TRADING minutes at
+ * entry (`dte` full sessions + what was left of the entry day). 0DTE decay is
+ * brutal by construction — especially late-day — exactly like the real thing.
+ */
+export function thetaBleed(
+  entryPremium: number,
+  horizon: Timeframe,
+  dte: number,
+  elapsedMin: number,
+  minutesToCloseAtEntry = 390,
+): number {
+  const totalMin = Math.max(30, Math.max(0, dte) * 390 + Math.max(15, Math.min(390, minutesToCloseAtEntry)));
+  const remaining = Math.max(0, totalMin - Math.max(0, elapsedMin));
+  const decay = Math.sqrt(remaining / totalMin);
+  const extrinsic = entryPremium * EXTRINSIC_SHARE[horizon];
+  return tidy(extrinsic * (1 - decay));
+}
+
+/** Live mark for an OPEN position: delta/gamma move minus the theta bleed for
+ *  the time already spent in the trade. This is what the exit monitor quotes. */
+export function premiumNow(
+  entryPremium: number,
+  delta: number,
+  move: number,
+  horizon: Timeframe,
+  favorable: boolean,
+  hold: { dte: number; elapsedMin: number; minutesToCloseAtEntry?: number },
+): number {
+  const base = premiumAt(entryPremium, delta, move, horizon, favorable);
+  const bleed = thetaBleed(entryPremium, horizon, hold.dte, hold.elapsedMin, hold.minutesToCloseAtEntry ?? 390);
+  return Math.max(0.01, tidy(base - bleed));
 }
 
 /** Convenience: premium % change from entry. */

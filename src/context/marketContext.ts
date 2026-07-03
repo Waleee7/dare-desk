@@ -9,6 +9,7 @@ import type { MarketDataProvider } from '../data/provider.js';
 import { sma, pctChange } from '../scan/indicators.js';
 import { getVerifiedHeadlines } from '../news/index.js';
 import { makeCalendarProvider, hasHighImpactToday } from '../calendar/index.js';
+import { classifyDayType } from './dayType.js';
 
 type Trend = 'up' | 'down' | 'flat';
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -89,9 +90,10 @@ export async function buildMarketContext(
   const breadth = tot ? round2((adv / tot) * 2 - 1) : 0;
 
   const todayKey = new Date().toISOString().slice(0, 10);
-  const [news, macro] = await Promise.all([
+  const [news, macro, dayType] = await Promise.all([
     getVerifiedHeadlines(['SPY', 'QQQ'], 6),
     makeCalendarProvider().macroEvents(), // free econ calendar; [] without a key
+    classifyDayType(provider), // trend day or chop day — TODAY's tape, not the daily
   ]);
 
   return {
@@ -106,5 +108,6 @@ export async function buildMarketContext(
     headlines: news.map((n) => `${n.headline} — ${n.source}`),
     eventRiskToday: hasHighImpactToday(macro, todayKey),
     earningsSoon: false, // set per-ticker by the caller (calendar.earningsFor)
+    dayType,
   };
 }

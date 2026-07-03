@@ -18,7 +18,7 @@ export interface Quote {
   t: number; // epoch ms
 }
 
-export type BarTimeframe = '1Min' | '5Min' | '15Min' | '1Day';
+export type BarTimeframe = '1Min' | '5Min' | '15Min' | '1Hour' | '4Hour' | '1Day';
 
 export interface MarketDataProvider {
   readonly name: string;

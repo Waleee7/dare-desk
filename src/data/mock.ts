@@ -31,15 +31,17 @@ export class MockMarketData implements MarketDataProvider {
 
   async getBars(symbol: string, timeframe: BarTimeframe, limit: number): Promise<Bar[]> {
     const base = BASE[symbol] ?? 100;
-    const seed = seedFor(symbol) ^ (timeframe === '1Min' ? 1 : timeframe === '5Min' ? 2 : timeframe === '15Min' ? 4 : 3);
+    const TF_SEED: Record<BarTimeframe, number> = { '1Min': 1, '5Min': 2, '15Min': 4, '1Hour': 5, '4Hour': 6, '1Day': 3 };
+    const seed = seedFor(symbol) ^ TF_SEED[timeframe];
     const rand = lcg(seed);
     const drift = ((seed % 7) - 3) / 1000; // -0.003..+0.003 per bar
     const vol = base * 0.0015;
 
-    const stepMs = timeframe === '1Day' ? 86_400_000
-      : timeframe === '15Min' ? 900_000
-      : timeframe === '5Min' ? 300_000
-      : 60_000;
+    const STEP_MS: Record<BarTimeframe, number> = {
+      '1Min': 60_000, '5Min': 300_000, '15Min': 900_000,
+      '1Hour': 3_600_000, '4Hour': 14_400_000, '1Day': 86_400_000,
+    };
+    const stepMs = STEP_MS[timeframe];
     const now = Date.now();
     const bars: Bar[] = [];
     let price = base * (1 - drift * limit * 0.5); // start so the walk lands near base
@@ -57,7 +59,9 @@ export class MockMarketData implements MarketDataProvider {
   }
 
   async getQuote(symbol: string): Promise<Quote> {
-    const bars = await this.getBars(symbol, '1Min', 1);
+    // Same walk the scanner sees (limit changes the LCG sequence) — a quote that
+    // disagrees with its own bars would false-trigger the chase guard on mock data.
+    const bars = await this.getBars(symbol, '1Min', 60);
     return { symbol, price: bars[bars.length - 1]?.c ?? BASE[symbol] ?? 100, t: Date.now() };
   }
 }

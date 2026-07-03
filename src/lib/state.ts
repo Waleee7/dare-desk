@@ -6,7 +6,11 @@ import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
 import type { EvaluationResult } from '../pipeline.js';
 import type { JournalEntry } from '../journal/journal.js';
-import type { ExpectancyStats } from './types.js';
+import type {
+  ExpectancyStats, OpenPosition, ExitEvent, ClosedTrade,
+  TrendSnapshot, KeyLevels, VolumeStats, MarketContext,
+} from './types.js';
+import type { Bar } from '../data/provider.js';
 import { config, hasLLM } from './config.js';
 import { newsProviderName } from '../news/index.js';
 
@@ -59,6 +63,53 @@ export interface SignalRow {
   result: string; // '' | 'win' | 'loss'
 }
 
+/** An open position as the dashboard sees it — live P/L attached. */
+export type PositionView = OpenPosition & { plPct: number | null; plUsd: number | null };
+
+/** Compact per-ticker chain read (the full snapshot is too heavy for state.json). */
+export interface TickerChainLite {
+  netFlowBias: 'bullish' | 'bearish' | 'mixed';
+  putCallVolRatio: number | null;
+  callWall: number | null;
+  putWall: number | null;
+  gammaMagnets: number[];
+  unusualStrikes: { strike: number; type: string; volOiRatio: number }[];
+  note: string;
+}
+
+/** Everything the Charts tab needs for one ticker: candles + the intelligence layer. */
+export interface TickerIntel {
+  ticker: string;
+  price: number | null;
+  trend: TrendSnapshot | null;
+  levels: KeyLevels | null;
+  rvol: VolumeStats | null;
+  chain: TickerChainLite | null;
+  bars: { '5m': Bar[]; '1h': Bar[]; '1D': Bar[] };
+}
+
+export interface NewsRow {
+  headline: string;
+  source: string;
+  url: string;
+  at: string;
+  symbols: string[];
+  breaking: boolean;
+}
+
+/** The day's risk posture — what the firewall is enforcing right now. */
+export interface DayView {
+  date: string;
+  realizedPnlUsd: number;
+  peakPnlUsd: number;
+  tradesToday: number;
+  openPositionsCount: number;
+  openRiskUsd: number;
+  sizeMultiplier: number;
+  standDownReason: string | null;
+  cooldownUntil: number | null;
+}
+
 export interface DashboardState {
   brand: string;
   updatedAt: string;
@@ -71,6 +122,14 @@ export interface DashboardState {
   meta: DashboardMeta;
   expectancy: ExpectancyStats;
   proveIt: { proven: boolean; paperTrades: number; needed: number };
+  // 2026-07 dashboard contract (optional — one-shot writers may omit them):
+  dayType?: MarketContext['dayType'];
+  day?: DayView;
+  positions?: PositionView[];
+  exitEvents?: ExitEvent[];
+  closedTrades?: ClosedTrade[];
+  intel?: Record<string, TickerIntel>;
+  news?: NewsRow[];
 }
 
 const STATE_PATH = join(process.cwd(), 'data', 'state.json');

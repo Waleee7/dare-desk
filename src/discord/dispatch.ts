@@ -7,7 +7,8 @@
 import type { EvaluationResult } from '../pipeline.js';
 import type { PremiumFloorAlert } from '../lib/types.js';
 import { config } from '../lib/config.js';
-import { postToDiscord, type DiscordEmbed } from './transport.js';
+import { type DiscordEmbed } from './transport.js';
+import { postSignal, postWatch } from './router.js';
 
 const COLOR = { aplus: 0xf97316, fire: 0xa3e635, watch: 0xfbbf24, rej: 0x5a6473 };
 export type Routed = 'signal' | 'watch' | 'rejected';
@@ -16,15 +17,14 @@ export async function dispatchSignal(res: EvaluationResult): Promise<Routed> {
   const a = res.alert;
   if (a.kind === 'rejection') return 'rejected';
 
-  // Fire to the main signals channel: A+ always; A only for Core/Focus (Extended
-  // must clear A+, which the firewall already enforces upstream). B → watch feed.
+  // Fire to #signals (+ the ticker's bucket channel: #mag7 / #spy-qqq): A+ always;
+  // A only for Core/Focus (Extended must clear A+, enforced upstream). B → watch feed.
   const fires = a.grade === 'A+' || (a.grade === 'A' && a.tier !== 'extended');
   if (fires) {
-    await postToDiscord(config.discordWebhookUrl, signalContent(a), [signalEmbed(a, res)]);
+    await postSignal(a.ticker, signalContent(a), [signalEmbed(a, res)]);
     return 'signal';
   }
-  const url = config.discordWatchWebhookUrl || config.discordWebhookUrl;
-  await postToDiscord(url, watchContent(a), [watchEmbed(a, res)]);
+  await postWatch(watchContent(a), [watchEmbed(a, res)]);
   return 'watch';
 }
 

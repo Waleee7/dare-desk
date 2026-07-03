@@ -6,7 +6,8 @@
 import type { ExpectancyStats } from '../lib/types.js';
 import { config } from '../lib/config.js';
 import { claimsAllowed } from '../backtest/index.js';
-import { postToDiscord, type DiscordEmbed } from './transport.js';
+import { type DiscordEmbed } from './transport.js';
+import { postTradeMgmt } from './router.js';
 
 const signedR = (r: number): string => `${r >= 0 ? '+' : ''}${r}R`;
 
@@ -52,9 +53,8 @@ export function buildEodRecap(input: RecapInput): { text: string; embed: Discord
   return { text, embed };
 }
 
-/** Post the EOD recap to the watch webhook (falls back to main). False if unconfigured. */
+/** Post the EOD recap to #trade-management (falls back to main). False if unconfigured. */
 export async function postEodRecap(input: RecapInput): Promise<boolean> {
   const { text, embed } = buildEodRecap(input);
-  const url = config.discordWatchWebhookUrl || config.discordWebhookUrl;
-  return postToDiscord(url, text, [embed]);
+  return postTradeMgmt(text, [embed]);
 }

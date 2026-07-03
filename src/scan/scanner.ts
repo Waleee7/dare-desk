@@ -4,11 +4,17 @@
 // for the decision engine to score. SPY/QQQ are always scanned.
 
 import type { MarketDataProvider } from '../data/provider.js';
-import type { TradeIdea, OptionType } from '../lib/types.js';
+import type { TradeIdea, OptionType, TrendSnapshot, KeyLevels, VolumeStats, Timeframe } from '../lib/types.js';
+import type { ChainSnapshot } from '../options/provider.js';
 import { analyzeMtf, type MtfResult } from './mtf.js';
 import { fullUniverse, tierOf } from './universe.js';
-import { selectStrike, dteFor, expiryForDte, estPremium } from './contracts.js';
+import { dteFor } from './contracts.js';
+import { selectRealContract, snapExpiry, type SelectedContract } from './contractSelect.js';
 import { last, pctChange } from './indicators.js';
+import { computeTrendSnapshot } from '../context/trend.js';
+import { computeKeyLevels, snapTargets } from './levels.js';
+import { computeVolumeStats } from './volume.js';
+import { getChainSnapshot } from '../options/index.js';
 
 export class Scanner {
   constructor(
@@ -25,9 +31,51 @@ export class Scanner {
     for (const symbol of this.universe) {
       const m = await analyzeMtf(this.provider, symbol, refReturn);
       if (!m || m.primary.strength < strengthFloor) continue;
-      ideas.push(toIdea(symbol, m, vix));
+      const intel = await this.intelFor(symbol, m.price);
+      const sel = await this.pickContract(symbol, m.primary.direction === 'long' ? 'call' : 'put', m.horizon, m.price, vix, intel.chain);
+      ideas.push(toIdea(symbol, m, sel, intel));
     }
     return ideas;
+  }
+
+  /** Intelligence layer for a candidate: higher-TF trend stack, level map (walls),
+   *  and relative volume. All best-effort — a feed hiccup degrades to undefined
+   *  rather than killing the scan. Bars are shared with analyzeMtf via the cache. */
+  async intelFor(symbol: string, price: number): Promise<TickerScanIntel> {
+    const [trend, chain, rvol, fifteens, daily] = await Promise.all([
+      computeTrendSnapshot(this.provider, symbol).catch(() => undefined),
+      getChainSnapshot(symbol),
+      computeVolumeStats(this.provider, symbol).catch(() => undefined),
+      this.provider.getBars(symbol, '15Min', 60).catch(() => []),
+      this.provider.getBars(symbol, '1Day', 30).catch(() => []),
+    ]);
+    const levels = fifteens.length || daily.length || chain
+      ? computeKeyLevels({ ticker: symbol, price, intraday: fifteens, daily, chain })
+      : undefined;
+    return { trend, levels, rvol, chain };
+  }
+
+  /** Contract for the idea: snap DTE to a real listed expiry, fetch that expiry's
+   *  quotes if the front chain isn't it, then chain-anchor (or model-fallback). */
+  private async pickContract(
+    symbol: string,
+    optionType: OptionType,
+    horizon: Timeframe,
+    price: number,
+    vix: number | undefined,
+    front: ChainSnapshot | null,
+  ): Promise<SelectedContract> {
+    let chain = front;
+    if (front && this.provider.realtime) {
+      const snapped = snapExpiry(dteFor(horizon, vix), front.expirations);
+      if (snapped && snapped.expiry !== front.expiry) {
+        chain = (await getChainSnapshot(symbol, snapped.expiry)) ?? front;
+      }
+    }
+    return selectRealContract({
+      ticker: symbol, price, optionType, horizon, vix, chain,
+      realtimeData: this.provider.realtime,
+    });
   }
 
   private async spyReturn(): Promise<number> {
@@ -37,10 +85,20 @@ export class Scanner {
   }
 }
 
-function toIdea(symbol: string, m: MtfResult, vix?: number): TradeIdea {
+export interface TickerScanIntel {
+  trend?: TrendSnapshot;
+  levels?: KeyLevels;
+  rvol?: VolumeStats;
+  chain: ChainSnapshot | null;
+}
+
+function toIdea(symbol: string, m: MtfResult, sel: SelectedContract, intel: TickerScanIntel): TradeIdea {
   const sig = m.primary;
-  const optionType: OptionType = sig.direction === 'long' ? 'call' : 'put';
   const horizon = m.horizon;
+  // Snap targets to the walls — take profit in FRONT of resistance, not through it.
+  const targets = intel.levels
+    ? snapTargets(sig.entry, sig.targets, sig.direction, intel.levels)
+    : sig.targets;
   return {
     alertId: `scan-${symbol}-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
     ticker: symbol,
@@ -48,19 +106,16 @@ function toIdea(symbol: string, m: MtfResult, vix?: number): TradeIdea {
     setup: sig.setup,
     timeframe: horizon,
     tier: tierOf(symbol),
-    contract: {
-      ticker: symbol,
-      optionType,
-      strike: selectStrike(symbol, m.price, optionType, horizon, vix),
-      expiry: expiryForDte(dteFor(horizon, vix)),
-      dte: dteFor(horizon, vix),
-    },
+    contract: sel.contract,
     entry: round(sig.entry),
     stop: round(sig.stop),
-    targets: sig.targets,
-    premium: estPremium(symbol, m.price, horizon, vix),
-    notes: sig.rationale,
+    targets,
+    premium: sel.premium,
+    notes: `${sig.rationale} · ${sel.note}`,
     mtf: { timeframes: m.timeframes, agreement: m.agreement, conflict: m.conflict },
+    trend: intel.trend,
+    levels: intel.levels,
+    rvol: intel.rvol,
   };
 }
 

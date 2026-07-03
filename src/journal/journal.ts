@@ -8,6 +8,9 @@ import type {
   ClosedTrade, ExpectancyStats, Tier,
 } from '../lib/types.js';
 import { computeExpectancy } from '../backtest/index.js';
+import { config } from '../lib/config.js';
+import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
+import { join, dirname } from 'node:path';
 
 export type MistakeTag =
   | 'late_entry' | 'early_exit' | 'no_stop' | 'bad_contract' | 'ignored_regime'
@@ -39,6 +42,18 @@ export interface JournalEntry {
 export class TradeJournal {
   private entries: JournalEntry[] = [];
   private closed: ClosedTrade[] = [];
+  private readonly entriesPath: string | null;
+  private readonly closedPath: string | null;
+
+  /** Pass a dataDir to make the journal PERSISTENT (data/journal.json +
+   *  data/closed.json). Without persistence every restart wiped expectancy and
+   *  reset the 100-trade prove-it counter — the gate was unreachable. Omit for
+   *  throwaway engines (tests, one-shot CLI). */
+  constructor(dataDir?: string) {
+    this.entriesPath = dataDir ? join(dataDir, 'journal.json') : null;
+    this.closedPath = dataDir ? join(dataDir, 'closed.json') : null;
+    this.load();
+  }
 
   record(
     idea: TradeIdea,
@@ -71,6 +86,7 @@ export class TradeJournal {
       ruleIdea: ruleIdeaFrom(fw, decision),
     };
     this.entries.push(entry);
+    this.save();
     return entry;
   }
 
@@ -83,7 +99,11 @@ export class TradeJournal {
     costPaidUsd: number; stopPremium: number;
     regime: 'up' | 'down' | 'flat';
   }): ClosedTrade {
-    const pnlUsd = round2((t.exitPremium - t.fillPremium) * 100 * t.contracts);
+    // Round-trip commissions come off the top — on small 0DTE lots the fixed fee
+    // is 2-5% of premium per round trip, enough to flip a thin edge negative.
+    // (TP1-scaled positions actually pay three legs; two is the honest floor.)
+    const commissions = round2(config.fills.commissionPerContract * t.contracts * 2);
+    const pnlUsd = round2((t.exitPremium - t.fillPremium) * 100 * t.contracts - commissions);
     const riskUsd = Math.max(1, (t.fillPremium - t.stopPremium) * 100 * t.contracts);
     const rMultiple = round2(pnlUsd / riskUsd);
     const ct: ClosedTrade = {
@@ -95,7 +115,36 @@ export class TradeJournal {
       result: pnlUsd >= 0 ? 'win' : 'loss', regime: t.regime,
     };
     this.closed.push(ct);
+    this.save();
     return ct;
+  }
+
+  // --- persistence (best-effort) --------------------------------------------------
+
+  private load(): void {
+    const read = <T>(path: string | null): T[] => {
+      if (!path || !existsSync(path)) return [];
+      try {
+        const data = JSON.parse(readFileSync(path, 'utf8')) as T[];
+        return Array.isArray(data) ? data : [];
+      } catch { return []; }
+    };
+    this.entries = read<JournalEntry>(this.entriesPath);
+    this.closed = read<ClosedTrade>(this.closedPath);
+  }
+
+  private save(): void {
+    try {
+      if (this.entriesPath) {
+        mkdirSync(dirname(this.entriesPath), { recursive: true });
+        // Cap the on-disk journal — expectancy needs closed trades, not every scan row.
+        writeFileSync(this.entriesPath, JSON.stringify(this.entries.slice(-2000), null, 2), 'utf8');
+      }
+      if (this.closedPath) {
+        mkdirSync(dirname(this.closedPath), { recursive: true });
+        writeFileSync(this.closedPath, JSON.stringify(this.closed, null, 2), 'utf8');
+      }
+    } catch { /* never let a disk hiccup kill a trade record in memory */ }
   }
 
   /** Attach Josh's own read to the most recent entry (his discretionary edge). */
