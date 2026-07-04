@@ -13,8 +13,8 @@ const TFS = ['5m', '1h', '1D'] as const;
 type Tf = (typeof TFS)[number];
 
 export default function ChartsTab({
-  state, ticker, onTicker,
-}: { state: DashboardState; ticker: string; onTicker: (t: string) => void }) {
+  state, ticker, onTicker, theme,
+}: { state: DashboardState; ticker: string; onTicker: (t: string) => void; theme?: string }) {
   const intel = state.intel ?? {};
   const tickers = Object.keys(intel).sort((a, b) => a.localeCompare(b));
   const active = intel[ticker] ? ticker : tickers[0] ?? '';
@@ -47,7 +47,7 @@ export default function ChartsTab({
             ))}
           </div>
         </div>
-        <PriceChart bars={info.bars[tf] ?? []} lines={lines} />
+        <PriceChart bars={info.bars[tf] ?? []} lines={lines} theme={theme} />
       </div>
 
       {info.trend && (
