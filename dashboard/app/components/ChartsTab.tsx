@@ -13,8 +13,8 @@ const TFS = ['5m', '1h', '1D'] as const;
 type Tf = (typeof TFS)[number];
 
 export default function ChartsTab({
-  state, ticker, onTicker, theme,
-}: { state: DashboardState; ticker: string; onTicker: (t: string) => void; theme?: string }) {
+  state, ticker, onTicker, mode,
+}: { state: DashboardState; ticker: string; onTicker: (t: string) => void; mode?: string }) {
   const intel = state.intel ?? {};
   const tickers = Object.keys(intel).sort((a, b) => a.localeCompare(b));
   const active = intel[ticker] ? ticker : tickers[0] ?? '';
@@ -47,7 +47,7 @@ export default function ChartsTab({
             ))}
           </div>
         </div>
-        <PriceChart bars={info.bars[tf] ?? []} lines={lines} theme={theme} />
+        <PriceChart bars={info.bars[tf] ?? []} lines={lines} mode={mode} />
       </div>
 
       {info.trend && (
@@ -63,8 +63,8 @@ export default function ChartsTab({
                 </span>
               ))}
               <span className="trend-chip" style={{
-                color: info.trend.alignment === 'aligned-up' ? 'var(--green)'
-                  : info.trend.alignment === 'aligned-down' ? 'var(--red)' : 'var(--text-dim)',
+                color: info.trend.alignment === 'aligned-up' ? 'var(--up)'
+                  : info.trend.alignment === 'aligned-down' ? 'var(--down)' : 'var(--ink-dim)',
               }}>
                 {info.trend.alignment === 'aligned-up' ? 'STACKED ↑'
                   : info.trend.alignment === 'aligned-down' ? 'STACKED ↓' : 'MIXED'}

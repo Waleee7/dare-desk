@@ -57,7 +57,7 @@ export default function HistoryTab({ state }: { state: DashboardState }) {
               <span className="when">{timeAgo(j.at)}</span>
               <span>
                 <b className="num">{j.ticker}</b> <span className="dim">{j.setup}</span>{' '}
-                <span className={`grade-pill ${gradeClass(j.grade)}`}>{j.grade}</span>{' '}
+                <span className={`grade ${gradeClass(j.grade)}`}>{j.grade}</span>{' '}
                 <span className="dim">
                   {j.outcome === 'alerted' ? '→ fired' : j.outcome === 'watch' ? '→ watching' : '→ filtered'}
                 </span>

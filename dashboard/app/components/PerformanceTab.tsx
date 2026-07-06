@@ -69,7 +69,7 @@ export default function PerformanceTab({ state }: { state: DashboardState }) {
                 <div className="hbar" key={r.key}>
                   <span className="lbl">{r.label}</span>
                   <div className="track">
-                    <div className="bar" style={{ width: `${w}%`, background: b.expectancyR >= 0 ? 'var(--green)' : 'var(--red)' }} />
+                    <div className="bar" style={{ width: `${w}%`, background: b.expectancyR >= 0 ? 'var(--up)' : 'var(--down)' }} />
                   </div>
                   <span className={`val ${plClass(b.expectancyR)}`}>{b.trades ? signedR(b.expectancyR) : '—'}</span>
                 </div>

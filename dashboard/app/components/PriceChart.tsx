@@ -43,7 +43,7 @@ const cssVar = (name: string, fallback: string): string => {
   return v || fallback;
 };
 
-export default function PriceChart({ bars, lines, theme }: { bars: Bar[]; lines: LevelLine[]; theme?: string }) {
+export default function PriceChart({ bars, lines, mode }: { bars: Bar[]; lines: LevelLine[]; mode?: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
 
@@ -51,13 +51,13 @@ export default function PriceChart({ bars, lines, theme }: { bars: Bar[]; lines:
     const host = hostRef.current;
     if (!host) return;
 
-    const up = cssVar('--green', '#34d399');
-    const down = cssVar('--red', '#f87171');
+    const up = cssVar('--up', '#0e7a4e');
+    const down = cssVar('--down', '#c0392b');
     const chart = createChart(host, {
       autoSize: true,
       layout: {
-        background: { type: ColorType.Solid, color: cssVar('--chart-bg', '#0d0d0f') },
-        textColor: cssVar('--text-dim', '#9b9ba4'),
+        background: { type: ColorType.Solid, color: cssVar('--chart-bg', '#ffffff') },
+        textColor: cssVar('--ink-dim', '#5b665f'),
         fontSize: 11,
         attributionLogo: false,
       },
@@ -108,8 +108,8 @@ export default function PriceChart({ bars, lines, theme }: { bars: Bar[]; lines:
       const hi = Math.max(...clean.map((b) => b.h));
       const pad = (hi - lo) * 0.25;
       const lineColor: Record<LevelLine['kind'], string> = {
-        wall: cssVar('--gold', '#d4af37'),
-        pd: cssVar('--text-dim', '#9b9ba4'),
+        wall: cssVar('--gold', '#a97b16'),
+        pd: cssVar('--ink-dim', '#5b665f'),
         res: down,
         sup: up,
       };
@@ -128,7 +128,7 @@ export default function PriceChart({ bars, lines, theme }: { bars: Bar[]; lines:
 
     chart.timeScale().fitContent();
     return () => { chart.remove(); chartRef.current = null; };
-  }, [bars, lines, theme]);
+  }, [bars, lines, mode]);
 
   return <div ref={hostRef} className="chart-host" />;
 }
