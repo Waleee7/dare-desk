@@ -7,6 +7,7 @@ import Anthropic from '@anthropic-ai/sdk';
 import { zodOutputFormat } from '@anthropic-ai/sdk/helpers/zod';
 import type { z } from 'zod';
 import { config, hasLLM } from './config.js';
+import { isClockFrozen } from './clock.js';
 
 let client: Anthropic | null = null;
 function getClient(): Anthropic | null {
@@ -34,6 +35,9 @@ export async function structuredCall<S extends z.ZodType>(
   schema: S,
   opts: StructuredOpts,
 ): Promise<z.infer<S> | null> {
+  // Replay: heuristics only — an LLM call per candidate per tick would be slow,
+  // costly, and non-deterministic (breaking reproducible backtests).
+  if (isClockFrozen()) return null;
   const c = getClient();
   if (!c) return null;
 

@@ -1,0 +1,127 @@
+[
+  {
+    "date": "1969-12-31",
+    "realizedPnlUsd": 0,
+    "trades": 0
+  },
+  {
+    "date": "2026-05-25",
+    "realizedPnlUsd": 1248.6000000000001,
+    "trades": 0
+  },
+  {
+    "date": "2026-05-26",
+    "realizedPnlUsd": -139.2999999999999,
+    "trades": 0
+  },
+  {
+    "date": "2026-05-27",
+    "realizedPnlUsd": -71.89999999999996,
+    "trades": 0
+  },
+  {
+    "date": "2026-05-28",
+    "realizedPnlUsd": 1317.2000000000005,
+    "trades": 0
+  },
+  {
+    "date": "2026-05-29",
+    "realizedPnlUsd": 638.9,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-01",
+    "realizedPnlUsd": -1388.5,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-02",
+    "realizedPnlUsd": 777.9000000000003,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-03",
+    "realizedPnlUsd": 266.4,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-04",
+    "realizedPnlUsd": 52.79999999999998,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-05",
+    "realizedPnlUsd": 1243.9000000000003,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-08",
+    "realizedPnlUsd": -886.2,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-09",
+    "realizedPnlUsd": 3045.599999999999,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-10",
+    "realizedPnlUsd": 2759.2000000000003,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-11",
+    "realizedPnlUsd": 103.49999999999996,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-12",
+    "realizedPnlUsd": 3053.499999999999,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-15",
+    "realizedPnlUsd": -487.8,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-16",
+    "realizedPnlUsd": 515,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-17",
+    "realizedPnlUsd": -21.10000000000005,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-18",
+    "realizedPnlUsd": -42.599999999999994,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-19",
+    "realizedPnlUsd": 252.3,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-22",
+    "realizedPnlUsd": -307.6,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-23",
+    "realizedPnlUsd": 708,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-24",
+    "realizedPnlUsd": 104.29999999999995,
+    "trades": 0
+  },
+  {
+    "date": "2026-06-25",
+    "realizedPnlUsd": -242.2,
+    "trades": 0
+  }
+]

@@ -8,6 +8,7 @@
 // caller degrades gracefully (scoreOptionsChain stays neutral rather than guessing).
 
 import type { ChainSnapshot, OptionsChainProvider, UnusualStrike, StrikeQuote } from './provider.js';
+import { isClockFrozen } from '../lib/clock.js';
 
 const HONEST_NOTE =
   'FREE/DELAYED ~15m — no real-time sweep/block tape; derived from the delayed chain (volume/OI), not order flow.';
@@ -238,6 +239,9 @@ const snapCache = new Map<string, { at: number; snap: ChainSnapshot | null }>();
 /** Cached delayed-chain snapshot (front expiry by default; pass a listed expiry
  *  to quote that one). Same never-throws contract as the provider. */
 export async function getChainSnapshot(ticker: string, expiry?: string): Promise<ChainSnapshot | null> {
+  // Replay: there is no historical delayed chain — fetching would return TODAY's
+  // for a past bar. Return null so contracts fall back to the model (correct + fast).
+  if (isClockFrozen()) return null;
   const key = `${ticker.trim().toUpperCase()}:${expiry ?? 'front'}`;
   const hit = snapCache.get(key);
   const now = Date.now();

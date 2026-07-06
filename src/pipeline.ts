@@ -43,10 +43,13 @@ export interface EngineOpts {
   quote?: (ticker: string) => Promise<{ price: number }>;
   /** Where day/journal state persists. Defaults to ./data. */
   dataDir?: string;
+  /** Current-time source (epoch ms). The backtest injects virtual time here so
+   *  day rollover + firewall timing follow the replay, not the wall clock. */
+  now?: () => number;
 }
 
-const etToday = (now = new Date()): string => {
-  const d = nowEt(now);
+const etToday = (nowMs: number): string => {
+  const d = nowEt(new Date(nowMs));
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
@@ -56,16 +59,18 @@ export class PremiumFloorEngine {
   private history: DaySummary[] = [];
   private readonly registry = new SignalRegistry();
   private readonly quote?: EngineOpts['quote'];
+  private readonly nowFn: () => number;
   private readonly dayPath: string;
   private readonly historyPath: string;
 
   constructor(opts: EngineOpts = {}) {
     const dataDir = opts.dataDir ?? join(process.cwd(), 'data');
     this.quote = opts.quote;
+    this.nowFn = opts.now ?? (() => Date.now());
     this.dayPath = join(dataDir, 'day.json');
     this.historyPath = join(dataDir, 'dayHistory.json');
     this.journal = new TradeJournal(dataDir);
-    this.day = this.loadDay() ?? freshDay(etToday());
+    this.day = this.loadDay() ?? freshDay(etToday(this.nowFn()));
     this.history = this.loadHistory();
     this.rollDay(); // a stale day.json from yesterday rolls immediately
   }
@@ -90,7 +95,7 @@ export class PremiumFloorEngine {
 
     // Chase guard: re-quote the underlying NOW — scoring takes real time, and a
     // breakout that already left the entry zone is a different (worse) trade.
-    const now = Date.now();
+    const now = this.nowFn();
     let currentPrice: number | undefined;
     if (this.quote) {
       try { currentPrice = (await this.quote(idea.ticker)).price; } catch { /* quote miss — guard skips */ }
@@ -172,7 +177,7 @@ export class PremiumFloorEngine {
     regime: 'up' | 'down' | 'flat'; now?: number;
   }): ClosedTrade {
     const ct = this.journal.closeTrade(args);
-    const now = args.now ?? Date.now();
+    const now = args.now ?? this.nowFn();
     this.day = recordTradeResult(this.day, ct.pnlUsd, now);
     const heatKey = `${clusterOf(args.ticker)}:${args.direction}`;
     const open = Math.max(0, (this.day.openClusters[heatKey] ?? 1) - 1);
@@ -214,8 +219,8 @@ export class PremiumFloorEngine {
 
   /** Roll to a fresh trading day when the ET date changes: archive the finished
    *  day, then apply the multi-day brakes (weekly breaker, red-streak half-size). */
-  rollDay(now = new Date()): void {
-    const today = etToday(now);
+  rollDay(nowMs = this.nowFn()): void {
+    const today = etToday(nowMs);
     if (this.day.date === today) return;
 
     this.history.push({ date: this.day.date, realizedPnlUsd: this.day.realizedPnlUsd, trades: this.day.tradesToday });

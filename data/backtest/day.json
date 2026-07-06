@@ -1,0 +1,26 @@
+{
+  "date": "2026-06-26",
+  "tradesToday": 0,
+  "realizedPnlUsd": 96.79999999999997,
+  "peakPnlUsd": 279.4,
+  "consecutiveLosses": 0,
+  "cooldownUntil": 1782487800000,
+  "cooldownCount": 1,
+  "cooldownByTicker": {
+    "SMH": 1782485400000,
+    "GOOGL": 1782486300000
+  },
+  "openClusters": {
+    "semis-nasdaq:long": 0,
+    "mega-tech:long": 0,
+    "broad:long": 0,
+    "semis-nasdaq:short": 0,
+    "mega-tech:short": 0,
+    "broad:short": 0
+  },
+  "openPositionsCount": 0,
+  "openRiskUsd": 0,
+  "sizeMultiplier": 1,
+  "standDownReason": null,
+  "closed": []
+}

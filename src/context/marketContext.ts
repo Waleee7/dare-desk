@@ -10,6 +10,7 @@ import { sma, pctChange } from '../scan/indicators.js';
 import { getVerifiedHeadlines } from '../news/index.js';
 import { makeCalendarProvider, hasHighImpactToday } from '../calendar/index.js';
 import { classifyDayType } from './dayType.js';
+import { isClockFrozen } from '../lib/clock.js';
 
 type Trend = 'up' | 'down' | 'flat';
 const round2 = (n: number) => Math.round(n * 100) / 100;
@@ -42,6 +43,11 @@ async function vixProxy(provider: MarketDataProvider): Promise<number> {
 
 /** CNN Fear & Greed (best-effort free endpoint); falls back to a regime-derived value. */
 async function fearGreed(breadth: number, spy: Trend): Promise<number> {
+  // Replay: never fetch TODAY's sentiment for a historical bar — derive it.
+  if (isClockFrozen()) {
+    const base = 50 + breadth * 25 + (spy === 'up' ? 10 : spy === 'down' ? -10 : 0);
+    return Math.max(0, Math.min(100, Math.round(base)));
+  }
   try {
     const res = await fetch('https://production.dataviz.cnn.io/index/fearandgreed/graphdata', {
       headers: { 'User-Agent': 'Mozilla/5.0', accept: 'application/json' },

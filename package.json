@@ -11,6 +11,7 @@
     "demo": "tsx src/demo.ts",
     "scan": "tsx src/scanDemo.ts",
     "webhook": "tsx src/server/webhook.ts",
+    "backtest": "tsx src/backtest/run.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run"
