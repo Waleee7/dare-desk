@@ -185,12 +185,15 @@ export function runFirewall(
 const GAP_HAIRCUT = 1.25;
 
 /** What a stop-out actually costs (haircutted), for the aggregate exposure cap.
- *  Falls back to 40% of premium when no premium stop exists; floored at 15% of
- *  cash deployed so a position never counts as free. */
+ *  The no-stop fallback is 35% of premium — the SAME number the exit monitor
+ *  uses when it books a bare-stop close (fill × 0.65 stop), so the risk ledger
+ *  reserves and releases identical amounts. A mismatch here slowly accumulates
+ *  phantom open risk until the cap blocks real trades. Floored at 15% of cash
+ *  deployed so a position never counts as free. */
 export function riskAtStopUsd(fillPremium: number, stopPremium: number, contracts: number, costPaidUsd: number): number {
   const perShare = stopPremium > 0 && stopPremium < fillPremium
     ? fillPremium - stopPremium
-    : fillPremium * 0.4;
+    : fillPremium * 0.35;
   return Math.max(
     Math.round(perShare * 100 * contracts * GAP_HAIRCUT),
     Math.round(costPaidUsd * 0.15),
