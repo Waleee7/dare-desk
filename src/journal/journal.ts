@@ -4,7 +4,7 @@
 // expectancy (the evidence behind the prove-it gate).
 
 import type {
-  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, BrokerResult,
+  TradeIdea, GovernorDecision, FirewallResult, SignalAlert, BrokerResult,
   ClosedTrade, ExpectancyStats, Tier,
 } from '../lib/types.js';
 import { computeExpectancy } from '../backtest/index.js';
@@ -59,7 +59,7 @@ export class TradeJournal {
     idea: TradeIdea,
     decision: GovernorDecision,
     fw: FirewallResult,
-    alert: PremiumFloorAlert,
+    alert: SignalAlert,
     broker: BrokerResult | null,
   ): JournalEntry {
     const outcome: JournalEntry['outcome'] = !fw.approved

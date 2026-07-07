@@ -11,6 +11,7 @@ export default function TodayTab({ state, onTicker }: { state: DashboardState; o
   const d = state.day;
   const positions = state.positions ?? [];
   const events = (state.exitEvents ?? []).slice(0, 8);
+  const armed = (state.armed ?? []).slice(0, 5);
   const fired = state.signals.filter((s) => s.fired && (s.grade === 'A+' || s.grade === 'A'));
   const watching = state.signals.filter((s) => s.grade === 'B');
   const pnl = d?.realizedPnlUsd ?? 0;
@@ -28,6 +29,23 @@ export default function TodayTab({ state, onTicker }: { state: DashboardState; o
       </div>
 
       {d?.standDownReason && <div className="stand-down">⛔ Standing down today — {d.standDownReason}</div>}
+
+      {armed.length > 0 && (
+        <>
+          <div className="section-label">⚡ About to trigger <span className="count">{armed.length}</span></div>
+          {armed.map((a, i) => (
+            <div className="armed" key={`${a.ticker}-${a.triggerLevel}-${i}`} onClick={() => onTicker(a.ticker)}>
+              <div className="armed-head">
+                <b className="num">{a.ticker}</b>
+                <span className="pill">{a.direction === 'long' ? 'CALLS' : 'PUTS'}</span>
+                <span className="spacer" />
+                <span className="num dim">break {a.triggerLevel} · {a.distancePct}% away</span>
+              </div>
+              <div className="lsub">{a.why}</div>
+            </div>
+          ))}
+        </>
+      )}
 
       <div className="section-label">Open trades <span className="count">{positions.length}</span></div>
       {positions.length === 0 ? (

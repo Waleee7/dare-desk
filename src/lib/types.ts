@@ -1,4 +1,4 @@
-// Shared domain types for the PremiumFloor decision engine.
+// Shared domain types for the DARE Desk decision engine.
 
 export type Direction = 'long' | 'short'; // calls = long, puts = short bias
 export type OptionType = 'call' | 'put';
@@ -80,6 +80,22 @@ export interface VolumeStats {
   rvol: number | null; // today's volume pace vs the 20-day average (1.0 = normal)
   lastBarSurge: boolean; // latest bar printed > 1.3x its 20-bar average
   note: string;
+}
+
+/** A pre-trigger "get ready" heads-up on a STRONGEST-only play about to fire:
+ *  a stacked higher-TF trend, hot volume, agreeing flow, price right at the
+ *  trigger level. Fires BEFORE the break so you're positioned, not chasing. */
+export interface ArmedSignal {
+  ticker: string;
+  direction: Direction;
+  triggerLevel: number;   // the level whose break confirms the trade
+  price: number;          // underlying price when armed
+  distancePct: number;    // how far price is from the trigger (%)
+  rvol: number;           // relative volume (participation)
+  flowBias: 'bullish' | 'bearish' | 'mixed' | null;
+  alignment: 'aligned-up' | 'aligned-down';
+  why: string;            // human, alert-ready
+  etTime: string;         // HH:MM:SS ET
 }
 
 /** A structured trade idea, parsed from a RawAlert. Prices are underlying $. */
@@ -258,7 +274,7 @@ export interface ExitPlan {
 
 export type AlertStatus = 'watch' | 'paper' | 'approval' | 'live-disabled' | 'rejected';
 
-export interface PremiumFloorAlert {
+export interface SignalAlert {
   kind: 'alert' | 'rejection';
   ticker: string;
   direction: Direction;

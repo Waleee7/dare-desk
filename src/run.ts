@@ -1,4 +1,4 @@
-// PremiumFloor continuous runner — "say go, it runs."
+// DARE Desk continuous runner — "say go, it runs."
 //   npm run go        → online; scans every SCAN_INTERVAL_SEC during market hours
 //   npm run stop      → writes data/STOP; the runner shuts down cleanly
 //   Ctrl+C            → graceful shutdown
@@ -11,14 +11,15 @@
 
 import { existsSync, unlinkSync } from 'node:fs';
 import { join } from 'node:path';
-import { PremiumFloorEngine } from './pipeline.js';
+import { DareDeskEngine } from './pipeline.js';
 import { Scanner } from './scan/scanner.js';
 import { makeProvider } from './data/index.js';
 import { CachedMarketData } from './data/cache.js';
 import { ExitMonitor } from './engine/exitMonitor.js';
-import { postTradeMgmt, postNews } from './discord/router.js';
+import { postTradeMgmt, postNews, postArmed } from './discord/router.js';
 import { BreakingNewsWatcher } from './news/breaking.js';
-import type { ExitEvent } from './lib/types.js';
+import { detectArmed, renderArmed, armedKey } from './scan/armed.js';
+import type { ExitEvent, ArmedSignal } from './lib/types.js';
 import type { TickerIntel, NewsRow } from './lib/state.js';
 import { buildMarketContext } from './context/marketContext.js';
 import { newsProviderName } from './news/index.js';
@@ -39,14 +40,16 @@ const log = (m: string) => console.log(`[${new Date().toLocaleTimeString()}] ${m
 process.on('SIGINT', () => { stopping = true; log('Ctrl+C — shutting down after this pass…'); });
 process.on('SIGTERM', () => { stopping = true; });
 
-// Cache bars for the tick window — scanner, trend engine, levels, breadth, and
-// exit monitor share overlapping reads; one fetch each per pass (free-tier friendly).
-const provider = new CachedMarketData(makeProvider(), Math.max(60, config.scanIntervalSec) * 1000);
+// Cache bars only long enough to coalesce ONE tick's overlapping reads (scanner,
+// trend, levels, breadth, exit monitor, intel all read the same bars) — short
+// enough that the next scan gets fresh data. This is what lets the cadence run
+// fast: duplicate reads within a pass hit the network once, the next pass refreshes.
+const provider = new CachedMarketData(makeProvider(), Math.min(config.scanIntervalSec, 12) * 1000);
 // The engine gets a live quote fn (chase guard + fill re-basing) and persists its
 // day state / journal to data/. The exit monitor persists positions there too.
 // No quote fn on mock data: the mock's per-timeframe walks are independent, so
 // "drift" between them is synthetic — the chase guard is a live-data discipline.
-const engine = new PremiumFloorEngine({ quote: provider.realtime ? (t) => provider.getQuote(t) : undefined });
+const engine = new DareDeskEngine({ quote: provider.realtime ? (t) => provider.getQuote(t) : undefined });
 const scanner = new Scanner(provider);
 const exitMonitor = new ExitMonitor();
 // Positions survive restarts — rebuild the aggregate-exposure limits from them
@@ -58,6 +61,8 @@ let recapPostedDate: string | null = null;
 // Rolling feeds for the dashboard (kept small — state.json rewrites every tick).
 const recentExitEvents: ExitEvent[] = [];
 const recentNews: NewsRow[] = [];
+const recentArmed: ArmedSignal[] = [];
+const armedSeen = new Map<string, number>(); // dedup key -> last-armed epoch ms
 
 /** Per-ticker intelligence for the Charts tab — bars, trend, levels, RVOL, flow.
  *  Reads are cache-backed, so this mostly reuses what the scan already fetched. */
@@ -146,11 +151,32 @@ async function tick(): Promise<void> {
     }
   }
 
+  // Intel for the dashboard AND for ARMED pre-trigger detection (computed once).
+  const intel = await buildIntel();
+
+  // ARMED — strongest plays coiling AT a trigger. Fire the heads-up BEFORE the
+  // break so we're positioned, not chasing. Strict by construction (detectArmed),
+  // deduped per name+direction+level, and never for a name already on.
+  const onKeys = new Set(exitMonitor.positions().map((p) => `${p.ticker}:${p.direction}`));
+  for (const sym of Object.keys(intel)) {
+    const info = intel[sym]!;
+    const a = detectArmed({ ticker: sym, price: info.price, trend: info.trend, levels: info.levels, rvol: info.rvol, chain: info.chain });
+    if (!a || onKeys.has(`${a.ticker}:${a.direction}`)) continue;
+    const key = armedKey(a);
+    const last = armedSeen.get(key) ?? 0;
+    if (Date.now() - last < config.risk.armCooldownMin * 60_000) continue;
+    armedSeen.set(key, Date.now());
+    recentArmed.push(a);
+    log(renderArmed(a));
+    await postArmed(renderArmed(a));
+  }
+
   const expectancy = engine.journal.expectancy();
   const day = engine.dayState();
   // Trim the rolling feeds in place (state.json rewrites every tick).
   if (recentExitEvents.length > 100) recentExitEvents.splice(0, recentExitEvents.length - 100);
   if (recentNews.length > 60) recentNews.splice(0, recentNews.length - 60);
+  if (recentArmed.length > 40) recentArmed.splice(0, recentArmed.length - 40);
 
   writeState({
     brand: config.botName,
@@ -179,8 +205,9 @@ async function tick(): Promise<void> {
     positions: exitMonitor.views(),
     exitEvents: [...recentExitEvents].reverse(), // newest first for the feed
     closedTrades: [...engine.journal.closedTrades()],
-    intel: await buildIntel(),
+    intel,
     news: [...recentNews].reverse(),
+    armed: [...recentArmed].reverse(),
   });
 
   // EOD auto-recap — once per day at/after the 0DTE flat-by time (~15:55 ET).
@@ -192,7 +219,8 @@ async function tick(): Promise<void> {
   }
 
   const onCount = exitMonitor.positions().length;
-  log(`scan: ${candidates.length} candidates · ${fired} fired · ${watching} watching · ${onCount} position${onCount === 1 ? '' : 's'} on · regime SPY ${baseCtx.spyTrend}/QQQ ${baseCtx.qqqTrend} · VIX≈${baseCtx.vix} · F&G ${baseCtx.fearGreed}`);
+  const armedCount = recentArmed.length;
+  log(`scan: ${candidates.length} candidates · ${fired} fired · ${watching} watching · ${armedCount} armed · ${onCount} position${onCount === 1 ? '' : 's'} on · regime SPY ${baseCtx.spyTrend}/QQQ ${baseCtx.qqqTrend} · VIX≈${baseCtx.vix} · F&G ${baseCtx.fearGreed}`);
 }
 
 /** Interruptible sleep — wakes early on shutdown. */

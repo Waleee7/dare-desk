@@ -9,7 +9,7 @@
 // TradingView alert's "Webhook URL" — wire at the end.
 
 import http from 'node:http';
-import { PremiumFloorEngine } from '../pipeline.js';
+import { DareDeskEngine } from '../pipeline.js';
 import { buildMarketContext } from '../context/marketContext.js';
 import { makeProvider } from '../data/index.js';
 import { dispatchSignal } from '../discord/dispatch.js';
@@ -29,7 +29,7 @@ function extractAlertText(body: string): string {
 }
 
 export function startWebhookServer(port = Number(process.env.WEBHOOK_PORT) || 4500): http.Server {
-  const engine = new PremiumFloorEngine();
+  const engine = new DareDeskEngine();
   const provider = makeProvider();
 
   const server = http.createServer(async (req, res) => {

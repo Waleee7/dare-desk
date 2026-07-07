@@ -5,7 +5,7 @@
 // dispatch.ts; this builds the canonical alert object + plain text.
 
 import type {
-  TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, AlertStatus, MarketContext, ExitPlan, Tier,
+  TradeIdea, GovernorDecision, FirewallResult, SignalAlert, AlertStatus, MarketContext, ExitPlan, Tier,
 } from '../lib/types.js';
 import { config } from '../lib/config.js';
 import { deriveExitPlan } from '../engine/exitPlan.js';
@@ -18,7 +18,7 @@ export function buildAlert(
   decision: GovernorDecision,
   fw: FirewallResult,
   ctx: MarketContext,
-): PremiumFloorAlert {
+): SignalAlert {
   const contractStr = `${idea.ticker} ${fmt(idea.contract.strike)}${idea.contract.optionType === 'call' ? 'C' : 'P'} ${idea.contract.expiry || ''}`.trim();
   const contractStyle = deriveContractStyle(idea);
   const tradeLength = deriveTradeLength(idea);
@@ -109,7 +109,7 @@ const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}%`;
 function base(
   idea: TradeIdea, decision: GovernorDecision, fw: FirewallResult,
   kind: 'alert' | 'rejection', status: AlertStatus, text: string, d: Derived,
-): PremiumFloorAlert {
+): SignalAlert {
   return {
     kind, ticker: idea.ticker, direction: idea.direction, setup: idea.setup,
     contract: idea.contract, entry: idea.entry, stop: fw.stop, targets: fw.targets,

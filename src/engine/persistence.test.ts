@@ -2,14 +2,14 @@ import { describe, it, expect } from 'vitest';
 import { mkdtempSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { PremiumFloorEngine } from '../pipeline.js';
+import { DareDeskEngine } from '../pipeline.js';
 
 const tmp = () => mkdtempSync(join(tmpdir(), 'pf-day-'));
 
 describe('day persistence + rollover', () => {
   it('persists day state and reloads it on restart', () => {
     const dir = tmp();
-    const eng = new PremiumFloorEngine({ dataDir: dir });
+    const eng = new DareDeskEngine({ dataDir: dir });
     eng.dayState().realizedPnlUsd = -150;
     eng.dayState().peakPnlUsd = 40;
     // closeTrade persists; poke persistence directly via a close
@@ -19,14 +19,14 @@ describe('day persistence + rollover', () => {
       fillPremium: 2, exitPremium: 1.5, contracts: 1, costPaidUsd: 200, stopPremium: 1.3,
       regime: 'up',
     });
-    const reloaded = new PremiumFloorEngine({ dataDir: dir });
+    const reloaded = new DareDeskEngine({ dataDir: dir });
     expect(reloaded.dayState().realizedPnlUsd).toBeLessThan(0); // the loss survived the restart
     expect(reloaded.journal.expectancy().trades).toBe(1); // prove-it counter survives too
   });
 
   it('rolls the day, archives history, and trips the weekly breaker', () => {
     const dir = tmp();
-    const eng = new PremiumFloorEngine({ dataDir: dir });
+    const eng = new DareDeskEngine({ dataDir: dir });
     // Fake a brutal yesterday: -7% on a $10k account (> the 6% weekly cap alone).
     eng.dayState().date = '2026-06-30';
     eng.dayState().realizedPnlUsd = -700;
@@ -38,7 +38,7 @@ describe('day persistence + rollover', () => {
 
   it('half-sizes after a red-day streak', () => {
     const dir = tmp();
-    const eng = new PremiumFloorEngine({ dataDir: dir });
+    const eng = new DareDeskEngine({ dataDir: dir });
     for (const [date, pnl] of [['2026-06-25', -50], ['2026-06-26', -80], ['2026-06-29', -30]] as const) {
       eng.dayState().date = date;
       eng.dayState().realizedPnlUsd = pnl;
@@ -50,7 +50,7 @@ describe('day persistence + rollover', () => {
 
   it('rebuilds aggregate exposure from persisted positions', () => {
     const dir = tmp();
-    const eng = new PremiumFloorEngine({ dataDir: dir });
+    const eng = new DareDeskEngine({ dataDir: dir });
     eng.syncOpenPositions([
       { ticker: 'NVDA', direction: 'long', fillPremium: 2.5, stopPremium: 1.5, contracts: 1, costPaidUsd: 250 },
       { ticker: 'QQQ', direction: 'long', fillPremium: 1.3, stopPremium: 0.8, contracts: 1, costPaidUsd: 130 },

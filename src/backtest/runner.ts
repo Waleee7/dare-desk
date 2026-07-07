@@ -6,7 +6,7 @@
 
 import { rmSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import { PremiumFloorEngine } from '../pipeline.js';
+import { DareDeskEngine } from '../pipeline.js';
 import { Scanner } from '../scan/scanner.js';
 import { ExitMonitor } from '../engine/exitMonitor.js';
 import { selectBroker, toOrder } from '../broker/index.js';
@@ -47,7 +47,7 @@ export async function runBacktest(opts: BacktestOptions): Promise<BacktestReport
 
   const replay = new ReplayMarketDataProvider(opts.store, 'replay');
   const { startMs, endMs } = replay.span();
-  const engine = new PremiumFloorEngine({
+  const engine = new DareDeskEngine({
     dataDir: sandbox,
     now: () => replay.now(),
     quote: (t) => replay.getQuote(t),

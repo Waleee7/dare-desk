@@ -186,6 +186,19 @@ export interface NewsRow {
   breaking: boolean;
 }
 
+export interface ArmedSignal {
+  ticker: string;
+  direction: 'long' | 'short';
+  triggerLevel: number;
+  price: number;
+  distancePct: number;
+  rvol: number;
+  flowBias: 'bullish' | 'bearish' | 'mixed' | null;
+  alignment: 'aligned-up' | 'aligned-down';
+  why: string;
+  etTime: string;
+}
+
 export interface DayView {
   date: string;
   realizedPnlUsd: number;
@@ -226,4 +239,5 @@ export interface DashboardState {
   closedTrades?: ClosedTrade[];
   intel?: Record<string, TickerIntel>;
   news?: NewsRow[];
+  armed?: ArmedSignal[];
 }

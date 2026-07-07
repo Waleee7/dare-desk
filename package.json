@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "PremiumFloor — explainable options-trading decision engine (paper-first, Robinhood Agentic MCP execution)",
+  "description": "DARE Desk — an open, explainable options-trading decision engine (paper-first, extensible signal framework)",
   "scripts": {
     "go": "tsx src/run.ts",
     "logon": "tsx src/run.ts",

@@ -8,7 +8,7 @@
 
 import { writeFileSync, readFileSync, existsSync, mkdirSync } from 'node:fs';
 import { join } from 'node:path';
-import type { MarketContext, TradeIdea, GovernorDecision, FirewallResult, PremiumFloorAlert, BrokerResult, ClosedTrade, Tier, DayState, DaySummary, OpenPosition } from './lib/types.js';
+import type { MarketContext, TradeIdea, GovernorDecision, FirewallResult, SignalAlert, BrokerResult, ClosedTrade, Tier, DayState, DaySummary, OpenPosition } from './lib/types.js';
 import { makeRawAlert, storeRawAlert } from './ingest/store.js';
 import { parseAlert } from './ingest/parseAlert.js';
 import { scoreAll } from './scoring/index.js';
@@ -27,7 +27,7 @@ export interface EvaluationResult {
   idea: TradeIdea;
   decision: GovernorDecision;
   firewall: FirewallResult;
-  alert: PremiumFloorAlert;
+  alert: SignalAlert;
   broker: BrokerResult | null;
   journalEntry: JournalEntry;
 }
@@ -53,7 +53,7 @@ const etToday = (nowMs: number): string => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
-export class PremiumFloorEngine {
+export class DareDeskEngine {
   readonly journal: TradeJournal;
   private day: DayState;
   private history: DaySummary[] = [];

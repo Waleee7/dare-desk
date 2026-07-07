@@ -57,6 +57,12 @@ export const config = {
     refireCooldownMin: num(process.env.REFIRE_COOLDOWN_MIN, 45), // same ticker+setup+direction re-fire lock
     // 0DTE entries only inside the gamma windows (ET minutes): open drive + power hour.
     zeroDteWindows: parseWindows(process.env.ZERO_DTE_WINDOWS || '580-660,840-915'),
+    // ARMED pre-trigger alerts — heads-up on the STRONGEST plays about to trigger,
+    // so you're positioned before the break (never chasing a move that's gone).
+    // Deliberately strict: strongest plays only, not a firehose.
+    armProximityPct: num(process.env.ARM_PROXIMITY_PCT, 0.18), // price within N% of the trigger level
+    armMinRvol: num(process.env.ARM_MIN_RVOL, 1.5), // participation must be running hot
+    armCooldownMin: num(process.env.ARM_COOLDOWN_MIN, 20), // per ticker+direction+level re-arm lock
   },
 
   liveTrading: (process.env.LIVE_TRADING || 'false').toLowerCase() === 'true',
@@ -74,6 +80,8 @@ export const config = {
   discordNewsWebhookUrl: process.env.DISCORD_NEWS_WEBHOOK_URL || '',
   discordMag7WebhookUrl: process.env.DISCORD_MAG7_WEBHOOK_URL || '',
   discordIndexWebhookUrl: process.env.DISCORD_INDEX_WEBHOOK_URL || '',
+  // #armed — pre-trigger "get ready" heads-up (falls back to the main signals feed).
+  discordArmedWebhookUrl: process.env.DISCORD_ARMED_WEBHOOK_URL || '',
 
   // Market-data feed. Robinhood has NO data API (execution-only), so the live
   // feed comes from Alpaca: free + real-time IEX for the underlyings.
@@ -98,7 +106,11 @@ export const config = {
   },
 
   // Continuous runner ("go"): scan cadence + whether to run outside RTH.
-  scanIntervalSec: num(process.env.SCAN_INTERVAL_SEC, 120),
+  // As fast as the free Alpaca tier sustains a fresh full-universe scan (~200
+  // req/min). 30s keeps signals within seconds of the move without rate-limiting;
+  // the ARMED pre-alert + chase guard are what actually prevent missed entries.
+  // Lower it further only with a paid real-time feed.
+  scanIntervalSec: num(process.env.SCAN_INTERVAL_SEC, 30),
   runOffHours: (process.env.RUN_OFFHOURS || 'false').toLowerCase() === 'true',
 } as const;
 

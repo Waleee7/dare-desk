@@ -21,7 +21,7 @@ import { estDelta, premiumNow, premiumPct } from '../scan/contracts.js';
 import { etTimeString, etMinutes } from '../lib/clock.js';
 import { config } from '../lib/config.js';
 
-/** What the monitor needs to book a close — PremiumFloorEngine satisfies this. */
+/** What the monitor needs to book a close — DareDeskEngine satisfies this. */
 export interface TradeCloser {
   closeTrade(args: {
     ticker: string; direction: 'long' | 'short'; setup: string; tier: OpenPosition['tier'];

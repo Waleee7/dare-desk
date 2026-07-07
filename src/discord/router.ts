@@ -43,3 +43,8 @@ export async function postNews(content: string, embeds?: DiscordEmbed[]): Promis
   if (!config.discordNewsWebhookUrl) return false;
   return postToDiscord(config.discordNewsWebhookUrl, content, embeds);
 }
+
+/** ARMED pre-trigger heads-up: #armed, falling back to the main signals feed. */
+export async function postArmed(content: string, embeds?: DiscordEmbed[]): Promise<boolean> {
+  return postToDiscord(config.discordArmedWebhookUrl || config.discordWebhookUrl, content, embeds);
+}

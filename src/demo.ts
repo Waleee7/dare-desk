@@ -7,7 +7,7 @@
 // counts (set before importing config). Override via .env if you prefer.
 process.env.ACCOUNT_SIZE_USD ||= '50000';
 
-const { PremiumFloorEngine } = await import('./pipeline.js');
+const { DareDeskEngine } = await import('./pipeline.js');
 const { config, hasLLM } = await import('./lib/config.js');
 type MarketContext = import('./lib/types.js').MarketContext;
 
@@ -24,7 +24,7 @@ function ctx(over: Partial<MarketContext> = {}): MarketContext {
 
 function hr(title: string) { console.log(`\n${'═'.repeat(64)}\n${title}\n${'═'.repeat(64)}`); }
 
-const engine = new PremiumFloorEngine();
+const engine = new DareDeskEngine();
 
 hr(`${config.botName.toUpperCase()} — DECISION ENGINE DEMO`);
 console.log(hasLLM()

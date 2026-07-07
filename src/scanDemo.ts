@@ -4,7 +4,7 @@
 
 process.env.ACCOUNT_SIZE_USD ||= '50000';
 
-const { PremiumFloorEngine } = await import('./pipeline.js');
+const { DareDeskEngine } = await import('./pipeline.js');
 const { Scanner } = await import('./scan/scanner.js');
 const { makeProvider } = await import('./data/index.js');
 const { buildMarketContext } = await import('./context/marketContext.js');
@@ -31,7 +31,7 @@ console.log(`Data feed: ${provider.name}${provider.realtime ? ' (real-time)' : '
 console.log(`Universe (${fullUniverse().length}): ${fullUniverse().join(', ')}`);
 
 const scanner = new Scanner(provider);
-const engine = new PremiumFloorEngine();
+const engine = new DareDeskEngine();
 
 // Today's REAL market context (regime/breadth/vol/Fear&Greed) from live data.
 const baseCtx = await buildMarketContext(provider, fullUniverse());

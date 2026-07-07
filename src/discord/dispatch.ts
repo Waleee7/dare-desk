@@ -5,7 +5,7 @@
 //   C / D     → not posted (dashboard only) — discipline: don't spam passes
 
 import type { EvaluationResult } from '../pipeline.js';
-import type { PremiumFloorAlert } from '../lib/types.js';
+import type { SignalAlert } from '../lib/types.js';
 import { config } from '../lib/config.js';
 import { type DiscordEmbed } from './transport.js';
 import { postSignal, postWatch } from './router.js';
@@ -28,21 +28,21 @@ export async function dispatchSignal(res: EvaluationResult): Promise<Routed> {
   return 'watch';
 }
 
-const bias = (a: PremiumFloorAlert) => (a.direction === 'long' ? 'CALLS' : 'PUTS');
+const bias = (a: SignalAlert) => (a.direction === 'long' ? 'CALLS' : 'PUTS');
 const fmt = (n: number | null) => (n == null ? '—' : String(n));
-const contractStr = (a: PremiumFloorAlert) =>
+const contractStr = (a: SignalAlert) =>
   `${a.contract.ticker} ${a.contract.strike}${a.contract.optionType === 'call' ? 'C' : 'P'} ${a.contract.expiry || ''}`.trim();
 
-const isAplus = (a: PremiumFloorAlert) => a.grade === 'A+';
+const isAplus = (a: SignalAlert) => a.grade === 'A+';
 const signed = (n: number) => `${n >= 0 ? '+' : ''}${n}%`;
 
-function signalContent(a: PremiumFloorAlert): string {
+function signalContent(a: SignalAlert): string {
   const tag = isAplus(a) ? '🔥🔥 **A+**' : '🚨';
   return `${tag} **${a.ticker} ${bias(a)}** — ${a.setup} · ${a.confidence}% confidence`;
 }
 
 /** Compact Exit Brain block for the embed. */
-function exitValue(a: PremiumFloorAlert): string {
+function exitValue(a: SignalAlert): string {
   const ep = a.exitPlan;
   const lines = [`⏱ ${ep.holdWindow}`];
   for (const tp of ep.takeProfits) lines.push(`${tp.label}: ${signed(tp.premiumPct)} (~$${tp.premium}) — ${tp.action}`);
@@ -52,7 +52,7 @@ function exitValue(a: PremiumFloorAlert): string {
   return lines.join('\n');
 }
 
-function signalEmbed(a: PremiumFloorAlert, res: EvaluationResult): DiscordEmbed {
+function signalEmbed(a: SignalAlert, res: EvaluationResult): DiscordEmbed {
   const fw = res.firewall;
   const aplus = isAplus(a);
   return {
@@ -83,13 +83,13 @@ function signalEmbed(a: PremiumFloorAlert, res: EvaluationResult): DiscordEmbed 
   };
 }
 
-function watchContent(a: PremiumFloorAlert): string {
+function watchContent(a: SignalAlert): string {
   if (a.confidence >= 76) return `🔥 **Keep watching — ${a.ticker}** · ${a.confidence}%, knocking on the 80% signal bar`;
   if (a.confidence >= 70) return `👀 **Keep watching — ${a.ticker}** · ${a.confidence}%, needs confirmation`;
   return `👀 Early watch — ${a.ticker} · ${a.confidence}%, alert if volume confirms`;
 }
 
-function watchEmbed(a: PremiumFloorAlert, res: EvaluationResult): DiscordEmbed {
+function watchEmbed(a: SignalAlert, res: EvaluationResult): DiscordEmbed {
   const note = a.confidence >= 76 ? 'Knocking on the 80% signal bar' : a.confidence >= 70 ? 'Keep watching — needs confirmation' : 'Early — needs volume';
   return {
     title: `👀 ${a.ticker} ${bias(a)} — WATCHING`,

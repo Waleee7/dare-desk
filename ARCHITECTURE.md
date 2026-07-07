@@ -1,8 +1,8 @@
-# PremiumFloor — Options Trading Decision Engine
+# DARE Desk — Options Trading Decision Engine
 
 A hackathon-grade, explainable decision engine that takes a base trading bot's
 Discord/Schwab alerts, scores them through six independent lenses, enforces hard
-risk discipline, and emits clean PremiumFloor alerts — paper-first, with an
+risk discipline, and emits clean DARE Desk signals — paper-first, with an
 optional path to autonomous execution through **Robinhood Agentic Trading (MCP)**.
 
 > Not financial advice. The athlete's discretionary edge is the IP. Live trading
@@ -38,7 +38,7 @@ Discord/Schwab alert (raw text)
         ▼  engine/firewall.ts  (Risk Discipline Firewall — hard blocks + sizing)
    FirewallResult  { approved, blocks[], positionSize, stop, targets }
         │
-        ├──▶ discord/alert.ts   → PremiumFloor alert (or "BOT PASSED" card)
+        ├──▶ discord/alert.ts   → DARE Desk signal (or "BOT PASSED" card)
         ├──▶ broker/            → PaperBroker (default) | RobinhoodAgentMcpBroker (live-gated)
         └──▶ journal/           → every alert/skip/fill/result, with mistake tags + rule ideas
 ```
@@ -51,7 +51,7 @@ Discord/Schwab alert (raw text)
 | 2 | Signal scoring engine (6 lenses) | technical / josh-trader-lens / market-regime-sentinel / news-catalyst-radar / options-chain-sniper | `src/scoring/index.ts` |
 | 3 | Strategy Edge Governor (/100, A+/watch/reject) | strategy-edge-governor | `src/engine/governor.ts` |
 | 4 | Risk Discipline Firewall (hard blocks, sizing, daily loss, cooldown) | risk-discipline-firewall | `src/engine/firewall.ts` |
-| 5 | Discord Alert Copilot (PremiumFloor format) | discord-alert-copilot | `src/discord/alert.ts` |
+| 5 | Discord Alert Copilot (DARE Desk format) | discord-alert-copilot | `src/discord/alert.ts` |
 | 6 | Paper trading mode (broker adapters separated, live OFF) | broker-adapter-architect | `src/broker/index.ts` |
 | 7 | Trade Journal Memory | trade-journal-memory | `src/journal/journal.ts` |
 | 8 | Backtest & Shadow mode | backtest-and-shadow-mode | `src/backtest/` *(scaffold)* |
@@ -86,6 +86,6 @@ Discord/Schwab alert (raw text)
 
 ## Roadmap
 
-- **Phase 1 (this scaffold):** pipeline, 6 scorers, governor, firewall, PremiumFloor alert, paper broker, journal, demo. Runs offline.
+- **Phase 1 (this scaffold):** pipeline, 6 scorers, governor, firewall, DARE Desk signal, paper broker, journal, demo. Runs offline.
 - **Phase 2:** real market-data + news + Fear&Greed + options-chain providers behind the `MarketContext` interface; Discord bot transport; persistent journal store.
 - **Phase 3:** backtest harness with slippage/spread + walk-forward; shadow mode logging; then RH MCP approval-mode execution (equities first), paper-proven before any live unlock.

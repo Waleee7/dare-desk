@@ -136,6 +136,15 @@ a:hover { text-decoration: underline; }
   margin: 8px 0;
 }
 
+/* ARMED — the most time-sensitive card on the desk: gold-edged, "get ready". */
+.armed {
+  border: 1px solid var(--gold); background: var(--gold-soft); border-radius: 12px;
+  padding: 11px 14px; margin-bottom: 8px; cursor: pointer;
+}
+.armed .armed-head { display: flex; align-items: center; gap: 8px; }
+.armed .armed-head .num { font-size: 15px; }
+.armed .lsub { margin-top: 4px; font-size: 12.5px; color: var(--ink-dim); }
+
 /* ---------- tabs ---------- */
 .tabs {
   position: fixed; bottom: 0; left: 0; right: 0; z-index: 50;

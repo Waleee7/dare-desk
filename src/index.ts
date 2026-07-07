@@ -2,7 +2,7 @@
 //   npm start -- "SPY 580C 6/20 unusual flow, entry 578 stop 576 targets 582 585"
 
 import type { MarketContext } from './lib/types.js';
-import { PremiumFloorEngine } from './pipeline.js';
+import { DareDeskEngine } from './pipeline.js';
 
 function neutralContext(): MarketContext {
   return {
@@ -18,7 +18,7 @@ async function main() {
     console.log('Usage: npm start -- "<alert text>"   |   npm run demo');
     return;
   }
-  const engine = new PremiumFloorEngine();
+  const engine = new DareDeskEngine();
   const { alert, broker } = await engine.evaluate(text, neutralContext());
   console.log(alert.text);
   if (broker) console.log(`\n[broker] ${broker.message}`);

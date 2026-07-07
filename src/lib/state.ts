@@ -8,7 +8,7 @@ import type { EvaluationResult } from '../pipeline.js';
 import type { JournalEntry } from '../journal/journal.js';
 import type {
   ExpectancyStats, OpenPosition, ExitEvent, ClosedTrade,
-  TrendSnapshot, KeyLevels, VolumeStats, MarketContext,
+  TrendSnapshot, KeyLevels, VolumeStats, MarketContext, ArmedSignal,
 } from './types.js';
 import type { Bar } from '../data/provider.js';
 import { config, hasLLM } from './config.js';
@@ -130,6 +130,7 @@ export interface DashboardState {
   closedTrades?: ClosedTrade[];
   intel?: Record<string, TickerIntel>;
   news?: NewsRow[];
+  armed?: ArmedSignal[];
 }
 
 const STATE_PATH = join(process.cwd(), 'data', 'state.json');
