@@ -11,3 +11,4 @@ data/*.json
 data/STOP
 dashboard/.next/
 .playwright-mcp/
+.next/
