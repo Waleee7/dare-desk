@@ -46,6 +46,10 @@ const cssVar = (name: string, fallback: string): string => {
 export default function PriceChart({ bars, lines, mode }: { bars: Bar[]; lines: LevelLine[]; mode?: string }) {
   const hostRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+  // Rebuild only when the data actually changes — not on every poll's fresh array identity.
+  const last = bars[bars.length - 1];
+  const barsSig = `${bars.length}:${last?.t ?? 0}:${last?.c ?? 0}`;
+  const linesSig = lines.map((l) => `${l.kind}${l.price}`).join(',');
 
   useEffect(() => {
     const host = hostRef.current;
@@ -128,7 +132,8 @@ export default function PriceChart({ bars, lines, mode }: { bars: Bar[]; lines: 
 
     chart.timeScale().fitContent();
     return () => { chart.remove(); chartRef.current = null; };
-  }, [bars, lines, mode]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- barsSig/linesSig stand in for the array identities
+  }, [barsSig, linesSig, mode]);
 
   return <div ref={hostRef} className="chart-host" />;
 }

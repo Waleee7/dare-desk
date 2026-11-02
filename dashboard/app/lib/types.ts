@@ -240,4 +240,6 @@ export interface DashboardState {
   intel?: Record<string, TickerIntel>;
   news?: NewsRow[];
   armed?: ArmedSignal[];
+  /** True when the server is serving the synthetic demo seed (never real data). */
+  demo?: boolean;
 }

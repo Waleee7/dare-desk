@@ -5,15 +5,19 @@
 // desk-talk feed, what fired, what it's watching. Plain-English throughout.
 
 import type { DashboardState, PositionView, SignalRow } from '../lib/types';
+import { armedKey, signalKey } from '../lib/alerts';
 import { signedMoney, signedPct, money, plClass, contractLabel, sideLabel, gradeClass, timeAgo } from '../lib/format';
 
-export default function TodayTab({ state, onTicker }: { state: DashboardState; onTicker: (t: string) => void }) {
+export default function TodayTab({ state, onTicker, fresh }: { state: DashboardState; onTicker: (t: string) => void; fresh?: ReadonlySet<string> }) {
+  const isFresh = (k: string) => !!fresh?.has(k);
   const d = state.day;
   const positions = state.positions ?? [];
   const events = (state.exitEvents ?? []).slice(0, 8);
   const armed = (state.armed ?? []).slice(0, 5);
   const fired = state.signals.filter((s) => s.fired && (s.grade === 'A+' || s.grade === 'A'));
   const watching = state.signals.filter((s) => s.grade === 'B');
+  // Strong setups the risk firewall refused — the discipline, made visible.
+  const vetoed = state.signals.filter((s) => !s.fired && (s.grade === 'A+' || s.grade === 'A') && s.blocks.length > 0);
   const pnl = d?.realizedPnlUsd ?? 0;
 
   return (
@@ -34,7 +38,7 @@ export default function TodayTab({ state, onTicker }: { state: DashboardState; o
         <>
           <div className="section-label">⚡ About to trigger <span className="count">{armed.length}</span></div>
           {armed.map((a, i) => (
-            <div className="armed" key={`${a.ticker}-${a.triggerLevel}-${i}`} onClick={() => onTicker(a.ticker)}>
+            <div className={`armed${isFresh(armedKey(a)) ? ' fresh' : ''}`} key={`${a.ticker}-${a.triggerLevel}-${i}`} onClick={() => onTicker(a.ticker)} role="button" tabIndex={0} onKeyDown={(e) => { if (e.key === 'Enter') onTicker(a.ticker); }}>
               <div className="armed-head">
                 <b className="num">{a.ticker}</b>
                 <span className="pill">{a.direction === 'long' ? 'CALLS' : 'PUTS'}</span>
@@ -69,7 +73,25 @@ export default function TodayTab({ state, onTicker }: { state: DashboardState; o
       {fired.length === 0 ? (
         <div className="empty">No new signals this scan — the gates are holding the bar at A.</div>
       ) : (
-        <div className="ledger">{fired.map((s, i) => <SignalRowView key={`${s.ticker}-${i}`} s={s} onTicker={onTicker} />)}</div>
+        <div className="ledger">{fired.map((s, i) => <SignalRowView key={`${s.ticker}-${i}`} s={s} onTicker={onTicker} fresh={isFresh(signalKey(s))} />)}</div>
+      )}
+
+      {vetoed.length > 0 && (
+        <>
+          <div className="section-label">Vetoed by the firewall <span className="count">{vetoed.length}</span></div>
+          <div className="ledger">
+            {vetoed.map((s, i) => (
+              <div className="lrow" key={`${s.ticker}-v-${i}`}>
+                <div className="avatar veto" onClick={() => onTicker(s.ticker)} style={{ cursor: 'pointer' }}>{s.ticker}</div>
+                <div className="lbody">
+                  <div className="ltitle">{s.ticker} {sideLabel(s.direction).toLowerCase()} <span className={`grade ${gradeClass(s.grade)}`}>{s.grade} · {s.confidence}%</span></div>
+                  <div className="lsub">{s.setup}</div>
+                </div>
+                <div className="lright veto-why">{s.blocks[0]!.split(' (')[0]!.replace(/_/g, ' ')}</div>
+              </div>
+            ))}
+          </div>
+        </>
       )}
 
       {watching.length > 0 && (
@@ -135,9 +157,9 @@ function PositionRow({ p, onTicker }: { p: PositionView; onTicker: (t: string) =
   );
 }
 
-function SignalRowView({ s, onTicker }: { s: SignalRow; onTicker: (t: string) => void }) {
+function SignalRowView({ s, onTicker, fresh }: { s: SignalRow; onTicker: (t: string) => void; fresh?: boolean }) {
   return (
-    <div className="lrow">
+    <div className={`lrow${fresh ? ' fresh' : ''}`}>
       <div className="avatar" onClick={() => onTicker(s.ticker)} style={{ cursor: 'pointer' }}>{s.ticker}</div>
       <div className="lbody">
         <div className="ltitle">{s.ticker} {sideLabel(s.direction).toLowerCase()} <span className={`grade ${gradeClass(s.grade)}`}>{s.grade} · {s.confidence}%</span></div>

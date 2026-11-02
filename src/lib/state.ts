@@ -131,6 +131,8 @@ export interface DashboardState {
   intel?: Record<string, TickerIntel>;
   news?: NewsRow[];
   armed?: ArmedSignal[];
+  /** True when the state is the synthetic demo seed (src/demo/seed.ts), never real data. */
+  demo?: boolean;
 }
 
 const STATE_PATH = join(process.cwd(), 'data', 'state.json');

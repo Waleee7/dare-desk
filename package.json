@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "DARE Desk — an open, explainable options-trading decision engine (paper-first, extensible signal framework)",
+  "description": "DARE Desk \u2014 an open, explainable options-trading decision engine (paper-first, extensible signal framework)",
   "scripts": {
     "go": "tsx src/run.ts",
     "logon": "tsx src/run.ts",
@@ -14,7 +14,8 @@
     "backtest": "tsx src/backtest/run.ts",
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
-    "test": "vitest run"
+    "test": "vitest run",
+    "dashboard:demo": "npm --prefix dashboard run build && npm --prefix dashboard run demo"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.104.2",

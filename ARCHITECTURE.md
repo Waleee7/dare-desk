@@ -1,12 +1,11 @@
 # DARE Desk — Options Trading Decision Engine
 
-A hackathon-grade, explainable decision engine that takes a base trading bot's
-Discord/Schwab alerts, scores them through six independent lenses, enforces hard
+An explainable decision engine that takes trade ideas (from its own scanner or a
+pasted alert), scores them through six independent lenses, enforces hard
 risk discipline, and emits clean DARE Desk signals — paper-first, with an
 optional path to autonomous execution through **Robinhood Agentic Trading (MCP)**.
 
-> Not financial advice. The athlete's discretionary edge is the IP. Live trading
-> is disabled by default; everything runs in paper/shadow mode until explicitly
+> Not financial advice. Live trading is disabled by default; everything runs in paper/shadow mode until explicitly
 > enabled, proven, and re-enabled per session.
 
 ---
@@ -17,7 +16,7 @@ optional path to autonomous execution through **Robinhood Agentic Trading (MCP)*
 - **`@anthropic-ai/sdk`** — LLM scoring via `messages.parse()` (Zod structured outputs) + adaptive thinking + prompt caching.
 - **`zod`** — schema validation for every LLM score (no free-text parsing).
 - **`discord.js`** *(adapter, later)* — signal output. v1 prints the formatted alert; the Discord transport is a thin sink.
-- **Robinhood Agentic Trading MCP** — execution. The official product is MCP-based (`https://agent.robinhood.com/mcp/trading`); Claude Code is a supported client. We connect via the Anthropic MCP-client beta. **Options agentic exec is still rolling out at RH; equities are live.**
+- **Robinhood Agentic Trading MCP** — *stub only.* `RobinhoodAgentMcpBroker` is gated and refuses to place orders; the MCP call itself is not implemented in this build. Paper trading is the only working execution path.
 
 ## Data flow (the pipeline)
 
@@ -55,9 +54,9 @@ Discord/Schwab alert (raw text)
 | 6 | Paper trading mode (broker adapters separated, live OFF) | broker-adapter-architect | `src/broker/index.ts` |
 | 7 | Trade Journal Memory | trade-journal-memory | `src/journal/journal.ts` |
 | 8 | Backtest & Shadow mode | backtest-and-shadow-mode | `src/backtest/` *(scaffold)* |
-| 9 | Hackathon Demo Mode | hackathon-demo-director | `src/demo.ts` |
+| 9 | Demo Mode | hackathon-demo-director | `src/demo.ts` |
 
-## Scoring & governance (deterministic, per Josh's spec)
+## Scoring & governance (deterministic)
 
 **Weights (sum = 100):** technical 25 · regime 20 · news 15 · options-chain 15 · risk/reward 15 · Josh-lens 10.
 
@@ -81,7 +80,7 @@ Discord/Schwab alert (raw text)
 
 - `BrokerAdapter` interface decouples strategy from execution.
 - **`PaperBroker`** (default) simulates fills, tracks P/L, never touches money.
-- **`RobinhoodAgentMcpBroker`** connects to `agent.robinhood.com/mcp/trading` via the Anthropic MCP-client beta (`mcp_servers` + `mcp-client-2025-11-20`), in **approval mode** (human-in-the-loop). Hard-gated behind `LIVE_TRADING=true` AND an explicit per-run unlock; **disabled by default**. Options exec depends on RH's rollout reaching the account.
+- **`RobinhoodAgentMcpBroker`** is a **gated stub** (approval-mode design). Behind `LIVE_TRADING=true`, an explicit per-run unlock, and the prove-it gate it still returns "not implemented" — it never sends an order.
 - Every order is journaled before and after; failed broker calls do not blindly retry.
 
 ## Roadmap

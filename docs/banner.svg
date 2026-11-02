@@ -1,0 +1,62 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 300" width="1200" height="300" role="img" aria-labelledby="t d">
+  <title id="t">DARE Desk</title>
+  <desc id="d">Animated banner: a signal pulse travels the pipeline scan, score, govern, firewall, alert, paper, journal.</desc>
+  <style>
+    .serif { font-family: Georgia, 'Times New Roman', serif; font-weight: 700; }
+    .mono { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; }
+    .lbl { font: 600 11.5px ui-monospace, 'SF Mono', Menlo, Consolas, monospace; letter-spacing: 1.6px; fill: #7f9588; }
+    .lbl-fw { fill: #ef7d70; }
+    .node { fill: #0b1c15; stroke: #4a6556; stroke-width: 1.5; }
+    .node.fw { stroke: #ef7d70; stroke-width: 2; }
+    .ring { fill: none; stroke: #ef7d70; stroke-width: 1.5; transform-origin: center; transform-box: fill-box; animation: ring 7s ease-out infinite; }
+    .trace { fill: none; stroke: #45d68a; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; stroke-dasharray: 520; stroke-dashoffset: 520; animation: draw 9s ease-in-out infinite; }
+    .pulse { fill: #e8c25c; animation: travel 7s linear infinite; filter: drop-shadow(0 0 6px #e8c25c); }
+    .blink { animation: blink 2.4s ease-in-out infinite; }
+    @keyframes draw { 0% { stroke-dashoffset: 520; opacity: 1; } 55% { stroke-dashoffset: 0; opacity: 1; } 88% { stroke-dashoffset: 0; opacity: 1; } 100% { stroke-dashoffset: 0; opacity: 0; } }
+    @keyframes travel { 0% { transform: translateX(0); opacity: 0; } 6% { opacity: 1; } 94% { opacity: 1; } 100% { transform: translateX(1020px); opacity: 0; } }
+    @keyframes ring { 0%, 38% { transform: scale(1); opacity: 0; } 40% { opacity: .9; } 58% { transform: scale(2.6); opacity: 0; } 100% { transform: scale(2.6); opacity: 0; } }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: .35; } }
+    @media (prefers-reduced-motion: reduce) {
+      .trace { animation: none; stroke-dashoffset: 0; opacity: .9; }
+      .pulse, .ring { animation: none; opacity: 0; }
+      .blink { animation: none; }
+    }
+  </style>
+  <defs>
+    <linearGradient id="fade" x1="0" x2="1"><stop offset="0" stop-color="#45d68a" stop-opacity=".15"/><stop offset=".4" stop-color="#45d68a" stop-opacity=".9"/><stop offset="1" stop-color="#45d68a" stop-opacity=".9"/></linearGradient>
+    <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"><path d="M40 0H0V40" fill="none" stroke="#12291e" stroke-width="1"/></pattern>
+  </defs>
+  <rect width="1200" height="300" fill="#06120d"/>
+  <rect width="1200" height="300" fill="url(#grid)"/>
+  <rect y="0" width="1200" height="3" fill="#d8b24a"/>
+  <!-- price trace, drawn on loop -->
+  <path class="trace" stroke="url(#fade)" d="M800 168 L832 158 L858 164 L890 140 L922 146 L952 118 L984 126 L1016 98 L1048 108 L1080 78 L1112 88 L1140 58"/>
+  <text class="serif" x="90" y="108" font-size="68" fill="#e8d391" letter-spacing="1">Dare <tspan fill="#d8b24a">Desk</tspan></text>
+  <text class="mono" x="92" y="146" font-size="15" fill="#94a99c" letter-spacing=".4">Explainable options-analysis engine. Graded signals, full exit plans,</text>
+  <text class="mono" x="92" y="168" font-size="15" fill="#94a99c" letter-spacing=".4">and a risk firewall that can say no.</text>
+  <g transform="translate(92 190)">
+    <rect width="236" height="24" rx="12" fill="none" stroke="#d8b24a" stroke-width="1.2"/>
+    <circle class="blink" cx="16" cy="12" r="3.5" fill="#d8b24a"/>
+    <text class="mono" x="30" y="16.5" font-size="11.5" font-weight="700" fill="#d8b24a" letter-spacing="1.4">PAPER / DEMO BY DEFAULT</text>
+  </g>
+  <!-- pipeline -->
+  <line x1="90" y1="238" x2="1110" y2="238" stroke="#1b3a2b" stroke-width="2"/>
+  <g>
+    <circle class="node" cx="90" cy="238" r="6"/>
+    <text class="lbl" x="90" y="268" text-anchor="middle">SCAN</text>
+    <circle class="node" cx="260" cy="238" r="6"/>
+    <text class="lbl" x="260" y="268" text-anchor="middle">SCORE</text>
+    <circle class="node" cx="430" cy="238" r="6"/>
+    <text class="lbl" x="430" y="268" text-anchor="middle">GOVERN</text>
+    <circle class="node fw" cx="600" cy="238" r="9"/>
+    <circle class="ring" cx="600" cy="238" r="9"/>
+    <text class="lbl lbl-fw" x="600" y="268" text-anchor="middle">FIREWALL</text>
+    <circle class="node" cx="770" cy="238" r="6"/>
+    <text class="lbl" x="770" y="268" text-anchor="middle">ALERT</text>
+    <circle class="node" cx="940" cy="238" r="6"/>
+    <text class="lbl" x="940" y="268" text-anchor="middle">PAPER</text>
+    <circle class="node" cx="1110" cy="238" r="6"/>
+    <text class="lbl" x="1110" y="268" text-anchor="middle">JOURNAL</text>
+  </g>
+  <circle class="pulse" cx="90" cy="238" r="4.5"/>
+</svg>

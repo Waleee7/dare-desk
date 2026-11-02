@@ -1,106 +1,114 @@
-# DARE Desk
+<p align="center"><img src="docs/banner.svg" alt="DARE Desk — explainable options-analysis engine with a risk firewall" width="100%"></p>
 
-An open, explainable options-trading **decision engine + dashboard** — a framework
-for turning market data into disciplined, graded signals with a full audit trail.
-Built to be forked: every stage is a small, typed module you can swap or extend.
+<p align="center">
+  <img alt="tests: 129 passing" src="https://img.shields.io/badge/tests-129%20passing-2ea44f">
+  <img alt="TypeScript" src="https://img.shields.io/badge/TypeScript-strict-3178c6">
+  <img alt="mode: paper / demo" src="https://img.shields.io/badge/mode-paper%20%2F%20demo%20by%20default-d8b24a">
+</p>
 
-> ⚠️ **Not financial advice.** Live trading is **off by default**. Everything runs
-> in modeled paper mode until a strategy proves itself and is explicitly unlocked.
-> All fills are estimates, not live execution.
+> **Not financial advice.** DARE Desk is research and education software. It runs in **paper / demo mode by default**;
+> live trading is off, and the only broker that works is a simulated one. Every fill is a modeled estimate, not live
+> execution. The demo dashboard and the offline backtest use **synthetic data** — nothing here is evidence of a profitable edge.
 
-## What it is
+## TL;DR
 
-DARE Desk scans a liquid options universe, reads the tape across multiple
-timeframes, grades each setup on earned confidence, and only surfaces the ones
-that clear a strict discipline bar — then it **manages the exit out loud** and
-learns from every closed trade. It ships with a clean, mobile-first dashboard
-and a replay backtester so you can validate any change against history before it
-goes live.
+- A TypeScript engine that scans a liquid options universe, grades each setup (A+ to D), and emits signals with a full exit plan (TP1, TP2, stop, time stop).
+- An **independent risk firewall** sits between the grade and the broker and can veto any signal, with the reason logged.
+- **ARMED** pre-trigger alerts warn you before a strong setup breaks, so you are positioned instead of chasing.
+- A replay backtester pushes historical bars through the same live pipeline with no lookahead.
+- A mobile-first Next.js dashboard. It runs end to end with **no API keys** (heuristic scoring, mock or synthetic data).
 
-The whole thing runs offline on deterministic mock data (no keys needed to try
-it), and upgrades to real-time when you add a free market-data key.
+<p align="center"><img src="docs/dashboard-demo.gif" alt="Dashboard in demo mode: an ARMED alert arrives, then a new signal fires and a paper position opens" width="300"></p>
 
-## Quickstart
+<table>
+  <tr>
+    <td><img src="docs/dashboard-desktop.png" alt="Dashboard, desktop, demo data"></td>
+    <td width="260"><img src="docs/dashboard-phone.png" alt="Dashboard, phone, demo data"></td>
+  </tr>
+</table>
+<sub>Screenshots and GIF are captured from demo mode (deterministic synthetic data, labeled DEMO DATA on screen).</sub>
+
+## Architecture
+
+```mermaid
+flowchart LR
+  A[Market data<br/>mock · Alpaca] --> B[Scan<br/>setups · MTF · levels]
+  B --> C[Score<br/>6 lenses]
+  C --> D[Govern<br/>earned confidence → grade]
+  D --> E{{Risk firewall}}
+  E -- approved --> F[Alert<br/>Discord]
+  E -- approved --> G[Paper broker]
+  E -- vetoed --> H[Journal<br/>reason logged]
+  G --> I[Exit monitor<br/>TP1 · runner · stops]
+  I --> H
+  F --> H
+  H --> J[(data/state.json)]
+  J --> K[Next.js dashboard]
+```
+
+Providers (data, news, options, broker) are interfaces with mock and real implementations. See [ARCHITECTURE.md](ARCHITECTURE.md) for the component map.
+
+## How the risk firewall vetoes a signal
+
+The governor decides how good a setup is. The firewall (`src/engine/firewall.ts`) decides whether the account is allowed to take it. It is deterministic, runs after scoring, and a veto is final. Every rule that trips is recorded on the signal, and the dashboard lists vetoed A and A+ setups with their first reason.
+
+```mermaid
+flowchart TD
+  S[Graded signal] --> G1{Grade A+ or A?}
+  G1 -- no --> V[VETO]
+  G1 -- yes --> R{Pass every gate?}
+  R -- any gate trips --> V
+  R -- all clear --> OK[Approved: size by risk budget → broker]
+  V --> L[Journal: blocks listed, nothing sent]
+```
+
+Gates it checks today: no clear stop · spread too wide · theta budget · 0DTE outside the gamma window · reward/risk below the minimum · extended names below A+ · correlation heat · chase guard · per-name cooldown · lunch-chop suppression · event blackout · max trades per day · daily-loss and weekly breakers · loss-streak cooldown · max open positions · aggregate open-risk cap · profit lock. Thresholds come from `.env` (see `.env.example`).
+
+## Run it locally (demo mode, no keys)
 
 ```bash
-npm install
-cp .env.example .env      # optional — runs fully offline with no keys
-npm run go                # start the continuous scanner (RUN_OFFHOURS=true to test after hours)
-npm run backtest          # replay history through the live pipeline, print an edge report
-npm test                  # full test suite
+npm install && npm --prefix dashboard install
+npm test                      # 129 tests, offline
+npm run dashboard:demo        # builds, then serves http://localhost:3007 with synthetic data
 ```
 
-Dashboard:
+Demo mode is also what you get when `data/state.json` does not exist yet. You can force it with `DARE_DESK_DEMO=1` or by opening `/?demo=1`.
+`?tick=N` pins one frame of the scripted scenario (an ARMED alert appears at tick 2, a signal fires at tick 4) and `?poll=1500` speeds the loop up.
+
+Engine and backtest (also keyless):
 
 ```bash
-cd dashboard && npm install && npm run start   # http://localhost:3007
+npm run go                    # continuous scanner, writes data/state.json (RUN_OFFHOURS=true to test after hours)
+npm run backtest              # replay a synthetic 20-session tape through the live pipeline (~1 min)
+npm run demo                  # one-shot walkthrough: idea → score → firewall → alert → paper fill → journal
 ```
 
-With **no keys**, scoring falls back to deterministic heuristics and the feed is
-mock — the pipeline, dashboard, backtester, and tests all still run. Add a free
-[Alpaca](https://alpaca.markets) key pair for real-time data, an Anthropic key
-for LLM scoring, and Discord webhook(s) for alerts.
+> The offline backtest runs on a **synthetic** price tape. It shows the harness works end to end; its R-multiples say nothing about real markets.
+> Set Alpaca keys to replay real history, and treat any result as a hypothesis until the 100-trade prove-it gate is met on real data.
 
-## Pipeline
+## Dashboard notes
 
-```
-scan → score → govern → firewall → alert → broker(paper) → exit-monitor → journal
-```
-
-- **Scan** — multi-timeframe setup detection (VWAP, breakouts, momentum, gaps,
-  liquidity sweeps) with a higher-timeframe trend stack (15m/1h/4h/1D), relative
-  volume, and key levels + call/put walls from the delayed options chain.
-- **Score** — six independent lenses (technical, regime, news, options-chain,
-  risk/reward, discretionary), each LLM-scored with a cached rubric and a
-  deterministic heuristic fallback.
-- **Govern** — weights the lenses into an **earned confidence** that can't exceed
-  what real confluence backs it. Letter grades A+/A/B/C/D; the top of the range
-  only unlocks when regime + catalyst/multi-timeframe actually agree.
-- **Firewall** — hard discipline: no-stop, wide-spread, weak R:R, event blackout,
-  lunch-chop suppression, 0DTE gamma windows, correlation-heat caps, chase guard,
-  aggregate open-risk cap, profit lock, daily-loss + weekly breakers, escalating
-  cooldowns. Nothing reaches a broker without passing here.
-- **Exit monitor** — every open paper position is re-quoted each tick against a
-  premium-based exit plan (theta-aware), with staged exits (scale at TP1, runner
-  to breakeven, time stops, 0DTE flat-by) that it narrates as it goes.
-- **Journal + prove-it gate** — R-multiple expectancy by regime and setup. No
-  performance claim is made until ≥100 validated paper trades with positive
-  expectancy and no losing regime bucket.
+- Five tabs: Today, Charts, History, Results, News. Light and dark themes.
+- **Haptics:** short vibration on a new ARMED alert or fired signal and on key toggles (Android Chromium via `navigator.vibrate`). It is feature-detected and a silent no-op on iOS and desktop. Toggle it in Settings; it defaults to off when the device asks for reduced motion.
+- Animations respect `prefers-reduced-motion`.
 
 ## Design principles
 
-- **Explainable, not a black box.** Every signal carries the reasons it fired and
-  the reasons it didn't; every gate logs why it blocked.
-- **Discipline over volume.** The engine is built to pass on marginal setups. Fewer,
-  better signals — flat is a position.
-- **Paper-first, prove-it-gated.** Performance claims are structurally gated on a
-  real sample; live execution is off until proven and unlocked.
-- **Modeled honestly.** Fills include spread, slippage, commission, and theta —
-  the numbers are conservative estimates, always labeled as such.
-- **Forkable.** Providers (data, news, options, broker) are interfaces with mock
-  and real implementations; add your own without touching the decision logic.
+- **Explainable.** Every signal carries the reasons it fired and, if vetoed, the rules that blocked it.
+- **Discipline over volume.** It is built to pass on marginal setups.
+- **Prove-it gated.** No performance claim until 100 validated paper trades with positive expectancy and no losing regime bucket.
+- **Modeled honestly.** Fills include spread, slippage, commission and theta, and are always labeled as estimates.
+- **Forkable.** Small typed modules; swap a provider without touching decision logic.
 
-## Structure
+## Layout
 
 ```
 src/
-  scan/         setup detectors, MTF, contract selection, key levels, RVOL
-  scoring/      the six lenses
-  engine/       governor, risk firewall, exit monitor, signal registry
-  context/      live market-context brain, trend stack, day-type classifier
-  data/         market-data providers (mock, Alpaca, per-tick cache)
-  options/      delayed options-chain flow (free, degraded-mode)
-  news/         verified-headline providers + breaking-news watcher
-  discord/      channel router, alert rendering, EOD recap
-  backtest/     replay provider + runner (history → live pipeline, no lookahead)
-  journal/      trade journal, expectancy, prove-it gate
-dashboard/      Next.js dashboard (Today / Charts / History / Results / News)
+  scan/  scoring/  engine/  context/  data/  options/  news/
+  discord/  backtest/  journal/  demo/     # demo/seed.ts = deterministic dashboard demo state
+dashboard/                                  # Next.js dashboard (Today / Charts / History / Results / News)
 ```
 
-See [ARCHITECTURE.md](ARCHITECTURE.md) for the component map and extension points.
+## License and use
 
-## License & use
-
-Provided as-is for research and education. You are responsible for your own
-trading decisions and for complying with the terms of any data/broker provider
-you connect. Nothing here is financial advice.
+Provided as-is for research and education. You are responsible for your own trading decisions and for the terms of any data or broker provider you connect.
