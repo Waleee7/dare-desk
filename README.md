@@ -109,6 +109,25 @@ src/
 dashboard/                                  # Next.js dashboard (Today / Charts / History / Results / News)
 ```
 
+## Tests
+
+Last run on 2026-11-17: **129 of 129 Vitest tests passed** in 15 files, offline in about 9 s, and `tsc --noEmit` was clean.
+
+## Status
+
+Paper and demo mode only. Live trading is off and the only working broker is simulated. With no keys it runs on mock and synthetic data with heuristic scoring. An Anthropic key lets the scorer and alert parser call Claude (falling back to the heuristics on any failure), Alpaca keys add real market data, and Discord webhooks turn on alerts. There are no performance claims, by design, until the prove-it gate is met.
+
+## Roadmap
+
+The phase plan is in [ARCHITECTURE.md](ARCHITECTURE.md#roadmap). Next:
+
+- Paper-trade on real Alpaca data until the 100-trade prove-it gate is met: positive expectancy and no losing regime bucket.
+- Only after that, approval-mode execution through a real broker, equities first, still paper-proven before any live unlock.
+
+## Credits
+
+Built by [Akinwale Dare](https://github.com/Waleee7) with TypeScript, Zod, the Anthropic SDK, Next.js and Vitest.
+
 ## License and use
 
 Provided as-is for research and education. You are responsible for your own trading decisions and for the terms of any data or broker provider you connect.
